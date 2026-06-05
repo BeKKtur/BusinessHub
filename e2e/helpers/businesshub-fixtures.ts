@@ -496,6 +496,8 @@ export async function mockCrudApi(page: Page, state = createTestBackend()) {
         data: {
           plan: payload.plan,
           priceId: payload.plan === "pro" ? "pri_pro_test" : "pri_business_test",
+          transactionId: payload.plan === "pro" ? "txn_pro_test" : "txn_business_test",
+          checkoutUrl: "https://checkout.paddle.com/test",
           clientToken: "test_client_token",
           environment: "sandbox",
           customerEmail: "owner@businesshub.test",

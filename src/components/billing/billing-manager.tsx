@@ -34,6 +34,8 @@ type BillingStatus = {
 type CheckoutResponse = {
   plan: "pro" | "business";
   priceId: string;
+  transactionId: string;
+  checkoutUrl: string | null;
   clientToken: string;
   environment: "sandbox" | "production";
   customerEmail: string | null;
@@ -65,12 +67,16 @@ declare global {
       };
       Initialize: (options: { token: string }) => void;
       Checkout: {
-        open: (options: {
-          items: Array<{ priceId: string; quantity: number }>;
-          customer?: { email: string };
-          customData: CheckoutResponse["customData"];
-          settings: { successUrl: string };
-        }) => void;
+        open: (
+          options:
+            | { transactionId: string; settings: { successUrl: string } }
+            | {
+                items: Array<{ priceId: string; quantity: number }>;
+                customer?: { email: string };
+                customData: CheckoutResponse["customData"];
+                settings: { successUrl: string };
+              }
+        ) => void;
       };
     };
   }
@@ -140,7 +146,7 @@ export function BillingManager() {
       }
 
       const checkout = payload?.data as CheckoutResponse | undefined;
-      if (!checkout?.priceId || !checkout.clientToken) {
+      if (!checkout?.priceId || !checkout.transactionId || !checkout.clientToken) {
         setNotice({ type: "error", message: "Paddle checkout вернул неполные данные." });
         return;
       }
@@ -153,12 +159,24 @@ export function BillingManager() {
 
       window.Paddle.Environment?.set(checkout.environment);
       window.Paddle.Initialize({ token: checkout.clientToken });
-      window.Paddle.Checkout.open({
-        items: [{ priceId: checkout.priceId, quantity: 1 }],
-        ...(checkout.customerEmail ? { customer: { email: checkout.customerEmail } } : {}),
-        customData: checkout.customData,
-        settings: { successUrl: checkout.successUrl }
-      });
+      try {
+        window.Paddle.Checkout.open({
+          transactionId: checkout.transactionId,
+          settings: { successUrl: checkout.successUrl }
+        });
+      } catch {
+        if (checkout.checkoutUrl) {
+          window.location.assign(checkout.checkoutUrl);
+          return;
+        }
+
+        window.Paddle.Checkout.open({
+          items: [{ priceId: checkout.priceId, quantity: 1 }],
+          ...(checkout.customerEmail ? { customer: { email: checkout.customerEmail } } : {}),
+          customData: checkout.customData,
+          settings: { successUrl: checkout.successUrl }
+        });
+      }
       setNotice({ type: "success", message: "Checkout открыт" });
     } finally {
       setLoadingPlan(undefined);

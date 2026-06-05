@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createRequire } from "node:module";
+import { Environment, Paddle } from "@paddle/paddle-node-sdk";
 import { planDetails, type SubscriptionPlan } from "@/lib/plans";
 import type { Database } from "@/types/database";
 
@@ -27,24 +27,31 @@ type PaddlePortalSession = {
   };
 };
 
-type PaddleClient = {
+type PaddleClient = InstanceType<typeof Paddle>;
+
+type LegacyPaddleClient = {
   webhooks: {
     unmarshal: (rawBody: string, secret: string, signature: string) => Promise<unknown>;
   };
   customerPortalSessions: {
     create: (customerId: string, subscriptionIds: string[]) => Promise<PaddlePortalSession>;
   };
-};
-
-type PaddleSdk = {
-  Environment: {
-    production: unknown;
-    sandbox: unknown;
+  transactions: {
+    create: (
+      payload: {
+        items: Array<{ priceId: string; quantity: number }>;
+        customData?: Record<string, string>;
+      },
+      query?: { include?: string[] }
+    ) => Promise<{
+      id: string;
+      status: string;
+      checkout: { url: string | null } | null;
+      customerId: string | null;
+      subscriptionId: string | null;
+    }>;
   };
-  Paddle: new (apiKey: string, options: { environment: unknown }) => PaddleClient;
 };
-
-const serverRequire = createRequire(import.meta.url);
 
 type QueryError = { message: string };
 type MaybeSingleResult = Promise<{ data: unknown; error: QueryError | null }>;
@@ -71,18 +78,12 @@ export function isCheckoutPlan(plan: SubscriptionPlan): plan is CheckoutPlan {
   return plan === "pro" || plan === "business";
 }
 
-function loadPaddleSdk() {
-  const packageName = "@paddle/paddle-node-sdk";
-  return serverRequire(packageName) as PaddleSdk;
-}
-
 export function getPaddleEnvironmentName() {
   return process.env.PADDLE_ENVIRONMENT === "production" ? "production" : "sandbox";
 }
 
 export function getPaddleEnvironment() {
-  const sdk = loadPaddleSdk();
-  return getPaddleEnvironmentName() === "production" ? sdk.Environment.production : sdk.Environment.sandbox;
+  return getPaddleEnvironmentName() === "production" ? Environment.production : Environment.sandbox;
 }
 
 export function createPaddleClient() {
@@ -90,10 +91,101 @@ export function createPaddleClient() {
     throw new Error("PADDLE_API_KEY is not configured");
   }
 
-  const sdk = loadPaddleSdk();
-  return new sdk.Paddle(process.env.PADDLE_API_KEY, {
+  return new Paddle(process.env.PADDLE_API_KEY, {
     environment: getPaddleEnvironment()
+  }) as PaddleClient & LegacyPaddleClient;
+}
+
+export type PaddleCheckoutTransaction = {
+  id: string;
+  status: string;
+  checkout: { url: string | null } | null;
+  customerId: string | null;
+  subscriptionId: string | null;
+};
+
+type PaddleTransactionResponse = {
+  data?: {
+    id?: string;
+    status?: string;
+    checkout?: { url?: string | null } | null;
+    customer_id?: string | null;
+    subscription_id?: string | null;
+  };
+  error?: unknown;
+  errors?: unknown;
+  detail?: string;
+  type?: string;
+  code?: string;
+};
+
+function getPaddleApiBaseUrl() {
+  return getPaddleEnvironmentName() === "production" ? "https://api.paddle.com" : "https://sandbox-api.paddle.com";
+}
+
+export async function createPaddleCheckoutTransaction(payload: {
+  priceId: string;
+  quantity: number;
+  customData: Record<string, string>;
+}): Promise<PaddleCheckoutTransaction> {
+  if (!process.env.PADDLE_API_KEY) {
+    throw new Error("PADDLE_API_KEY is not configured");
+  }
+
+  const requestBody = {
+    items: [{ price_id: payload.priceId, quantity: payload.quantity }],
+    collection_mode: "automatic",
+    custom_data: payload.customData
+  };
+
+  const response = await fetch(`${getPaddleApiBaseUrl()}/transactions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.PADDLE_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(requestBody)
   });
+  const rawBody = await response.text();
+  let body: PaddleTransactionResponse | null = null;
+  try {
+    body = rawBody ? (JSON.parse(rawBody) as PaddleTransactionResponse) : null;
+  } catch {
+    body = null;
+  }
+  const transaction = body?.data;
+
+  if (!response.ok || !transaction?.id) {
+    console.error("[billing.checkout.paddle.rest]", {
+      status: response.status,
+      responseBody: rawBody,
+      requestBody: {
+        ...requestBody,
+        items: requestBody.items.map((item) => ({
+          ...item,
+          price_id: `${item.price_id.slice(0, 8)}…${item.price_id.slice(-6)}`
+        }))
+      }
+    });
+    const error = new Error(body?.detail || `Paddle transaction request failed with status ${response.status}`);
+    Object.assign(error, {
+      status: response.status,
+      code: body?.code,
+      type: body?.type,
+      detail: body?.detail,
+      errors: body?.errors ?? body?.error,
+      responseBody: rawBody
+    });
+    throw error;
+  }
+
+  return {
+    id: transaction.id,
+    status: transaction.status ?? "unknown",
+    checkout: transaction.checkout ? { url: transaction.checkout.url ?? null } : null,
+    customerId: transaction.customer_id ?? null,
+    subscriptionId: transaction.subscription_id ?? null
+  };
 }
 
 export function getPriceIdForPlan(plan: CheckoutPlan) {
