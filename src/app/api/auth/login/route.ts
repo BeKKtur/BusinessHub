@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, parseJson, supabaseConfigErrorResponse } from "@/lib/api";
-import { isSupabasePublicConfigured } from "@/lib/env";
+import { isSupabaseServerConfigured } from "@/lib/env";
+import { ensureUserWorkspace, findAuthUserByEmail } from "@/lib/server/auth-provisioning";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 const loginSchema = z.object({
@@ -11,7 +13,7 @@ const loginSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    if (!isSupabasePublicConfigured()) {
+    if (!isSupabaseServerConfigured()) {
       return supabaseConfigErrorResponse();
     }
 
@@ -20,18 +22,40 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signInWithPassword(payload);
 
     if (error || !data.user) {
-      return NextResponse.json({ error: "Аккаунт не найден. Сначала зарегистрируйтесь." }, { status: 404 });
+      const admin = createAdminClient();
+      const existingUser = await findAuthUserByEmail(admin, payload.email);
+      if (!existingUser) {
+        return NextResponse.json({ error: "Аккаунт не найден. Сначала зарегистрируйтесь." }, { status: 404 });
+      }
+
+      try {
+        await ensureUserWorkspace(admin, { user: existingUser });
+      } catch (provisionError) {
+        console.error("[auth.login.provisionExisting]", {
+          message: provisionError instanceof Error ? provisionError.message : "Unknown provisioning error"
+        });
+      }
+
+      return NextResponse.json({ error: "Неверный пароль. Проверьте данные и попробуйте снова." }, { status: 401 });
     }
 
-    const { data: profile } = await supabase.from("profiles").select("id").eq("id", data.user.id).maybeSingle();
-    const { data: business } = await supabase.from("businesses").select("id").eq("owner_id", data.user.id).limit(1).maybeSingle();
+    const admin = createAdminClient();
+    let workspace: { businessId: string };
+    try {
+      workspace = await ensureUserWorkspace(admin, { user: data.user });
+    } catch (provisionError) {
+      console.error("[auth.login.provision]", {
+        message: provisionError instanceof Error ? provisionError.message : "Unknown provisioning error"
+      });
+      return NextResponse.json({ error: "Не удалось подготовить рабочее пространство." }, { status: 500 });
+    }
 
     return NextResponse.json({
       data: {
         userId: data.user.id,
-        nextPath: profile && business ? "/dashboard" : "/onboarding",
-        hasProfile: Boolean(profile),
-        hasBusiness: Boolean(business)
+        nextPath: workspace.businessId ? "/dashboard" : "/onboarding",
+        hasProfile: true,
+        hasBusiness: Boolean(workspace.businessId)
       }
     });
   } catch (error) {

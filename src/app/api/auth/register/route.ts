@@ -3,6 +3,7 @@ import type { AuthError } from "@supabase/supabase-js";
 import { z } from "zod";
 import { apiError, parseJson, supabaseConfigErrorResponse } from "@/lib/api";
 import { isSupabaseServerConfigured } from "@/lib/env";
+import { ensureUserWorkspace, findAuthUserByEmail } from "@/lib/server/auth-provisioning";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -45,6 +46,23 @@ export async function POST(request: Request) {
       console.error("[auth.register.createUser]", { message: details });
 
       if (isDuplicateAccountError(createError)) {
+        const existingUser = await findAuthUserByEmail(admin, payload.email);
+        if (existingUser) {
+          try {
+            await ensureUserWorkspace(admin, {
+              user: existingUser,
+              fullName: payload.name,
+              businessName: payload.businessName,
+              businessType: payload.businessType
+            });
+          } catch (provisionError) {
+            console.error("[auth.register.provisionExisting]", {
+              message: provisionError instanceof Error ? provisionError.message : "Unknown provisioning error"
+            });
+            return NextResponse.json({ error: "Аккаунт найден, но не удалось подготовить рабочее пространство." }, { status: 500 });
+          }
+        }
+
         return NextResponse.json({ error: "Аккаунт с таким email уже существует. Войдите." }, { status: 409 });
       }
 
@@ -53,31 +71,19 @@ export async function POST(request: Request) {
 
     const userId = createdUser.user.id;
     createdUserId = userId;
-    const { error: profileError } = await admin.from("profiles").upsert({
-      id: userId,
-      email: payload.email,
-      full_name: payload.name,
-      role: "user"
-    });
-
-    if (profileError) {
-      console.error("[auth.register.profile]", { message: profileError.message });
+    try {
+      await ensureUserWorkspace(admin, {
+        user: createdUser.user,
+        fullName: payload.name,
+        businessName: payload.businessName,
+        businessType: payload.businessType
+      });
+    } catch (provisionError) {
+      const message = provisionError instanceof Error ? provisionError.message : "Unknown provisioning error";
+      console.error("[auth.register.provision]", { message });
       await admin.auth.admin.deleteUser(userId);
       createdUserId = null;
-      return NextResponse.json({ error: publicSupabaseError("Не удалось создать профиль", profileError.message) }, { status: 500 });
-    }
-
-    const { error: businessError } = await admin.from("businesses").insert({
-      owner_id: userId,
-      name: payload.businessName || `${payload.name} Business`,
-      type: payload.businessType
-    });
-
-    if (businessError) {
-      console.error("[auth.register.business]", { message: businessError.message });
-      await admin.auth.admin.deleteUser(userId);
-      createdUserId = null;
-      return NextResponse.json({ error: publicSupabaseError("Не удалось создать бизнес", businessError.message) }, { status: 500 });
+      return NextResponse.json({ error: publicSupabaseError("Не удалось подготовить рабочее пространство", message) }, { status: 500 });
     }
 
     const supabase = await createClient();

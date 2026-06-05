@@ -14,6 +14,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatApiError } from "@/lib/api-client";
+import { createClient } from "@/lib/supabase/client";
 
 const loginSchema = z.object({
   email: z.string().email("Введите корректный email"),
@@ -51,6 +52,21 @@ export function LoginForm() {
     router.refresh();
   }
 
+  async function onGoogleLogin() {
+    setError(null);
+    const supabase = createClient();
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`
+      }
+    });
+
+    if (oauthError) {
+      setError(oauthError.message);
+    }
+  }
+
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
@@ -75,7 +91,7 @@ export function LoginForm() {
           <Button className="w-full" type="submit" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting ? "Вход..." : "Войти"}
           </Button>
-          <Button className="w-full" variant="outline" type="button" disabled>
+          <Button className="w-full" variant="outline" type="button" onClick={onGoogleLogin}>
             <Chrome className="h-4 w-4" />
             Google OAuth
           </Button>

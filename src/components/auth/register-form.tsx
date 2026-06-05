@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { createClient } from "@/lib/supabase/client";
 
 const registerSchema = z.object({
   name: z.string().trim().min(2, "Введите имя"),
@@ -55,6 +56,21 @@ export function RegisterForm() {
 
     router.replace((payload?.data?.nextPath ?? "/onboarding") as Route);
     router.refresh();
+  }
+
+  async function onGoogleRegister() {
+    setError(null);
+    const supabase = createClient();
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`
+      }
+    });
+
+    if (oauthError) {
+      setError(oauthError.message);
+    }
   }
 
   return (
@@ -107,7 +123,7 @@ export function RegisterForm() {
           <Button className="w-full" type="submit" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting ? "Создание..." : "Создать аккаунт"}
           </Button>
-          <Button className="w-full" variant="outline" type="button" disabled>
+          <Button className="w-full" variant="outline" type="button" onClick={onGoogleRegister}>
             <Chrome className="h-4 w-4" />
             Google OAuth
           </Button>
