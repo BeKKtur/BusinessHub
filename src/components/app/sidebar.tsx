@@ -1,16 +1,33 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { usePathname } from "next/navigation";
-import { Building2, PanelLeftClose } from "lucide-react";
+import { Building2, LifeBuoy, PanelLeftClose, Zap } from "lucide-react";
 import { navItems } from "@/lib/constants";
+import { planDetails, type SubscriptionPlan } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { LogoutButton } from "@/components/auth/logout-button";
 import { useAppStore } from "@/store/app-store";
 
-export function Sidebar() {
+type SidebarProps = {
+  role?: "user" | "admin" | "super_admin";
+  plan?: SubscriptionPlan;
+  subscriptionStatus?: string;
+  nextBilledAt?: string | null;
+};
+
+function formatRenewalDate(value?: string | null) {
+  if (!value) return "Нет даты продления";
+  return new Date(value).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export function Sidebar({ role = "user", plan = "free", subscriptionStatus = "active", nextBilledAt = null }: SidebarProps) {
   const pathname = usePathname();
   const { sidebarOpen, setSidebarOpen } = useAppStore();
+  const visibleNavItems = navItems.filter((item) => item.href !== "/admin" || role === "super_admin");
+  const currentPlan = planDetails[plan];
 
   return (
     <>
@@ -42,7 +59,7 @@ export function Sidebar() {
           </Button>
         </div>
         <nav className="flex-1 space-y-1 px-3 py-4">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const active = pathname === item.href;
             return (
               <Link
@@ -62,11 +79,26 @@ export function Sidebar() {
         </nav>
         <div className="border-t p-4">
           <div className="rounded-lg border bg-background p-3">
-            <div className="text-sm font-medium">Business Plan</div>
-            <div className="mt-1 text-xs text-muted-foreground">14 дней пробного доступа</div>
-            <div className="mt-3 h-2 rounded-full bg-muted">
-              <div className="h-2 w-2/3 rounded-full bg-primary" />
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-medium">{currentPlan.label} plan</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {subscriptionStatus} · {currentPlan.clients} · {currentPlan.appointments}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">{formatRenewalDate(nextBilledAt)}</div>
+              </div>
+              <Zap className="h-4 w-4 text-primary" />
             </div>
+            <Button asChild className="mt-3 w-full" size="sm" variant="outline">
+              <Link href="/billing">{plan === "free" ? "Upgrade" : "Manage"}</Link>
+            </Button>
+            <Button asChild className="mt-2 w-full" size="sm" variant="ghost">
+              <Link href={"/contact" as Route}>
+                <LifeBuoy className="h-4 w-4" />
+                Связаться с поддержкой
+              </Link>
+            </Button>
+            <LogoutButton />
           </div>
         </div>
       </aside>

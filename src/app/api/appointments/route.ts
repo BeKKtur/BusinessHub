@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { apiError, getSupabaseEnvStatus, parseJson, supabaseConfigErrorResponse } from "@/lib/api";
+import { enforcePlanLimit } from "@/lib/server/billing";
 import { createClient } from "@/lib/supabase/server";
-import { appointmentDeleteSchema, appointmentSchema, appointmentUpdateSchema } from "@/lib/validators";
-import type { Appointment } from "@/types/database";
+import { appointmentDeleteSchema, appointmentSchema, appointmentStatusActionSchema, appointmentUpdateSchema } from "@/lib/validators";
+import type { Appointment, AppointmentStatus, Revenue } from "@/types/database";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type QueryError = { message: string };
@@ -10,8 +11,10 @@ type QueryResult<T> = { data: T; error: null } | { data: null; error: QueryError
 type AppointmentInsert = Omit<Appointment, "id" | "created_at">;
 type AppointmentUpdate = Partial<Omit<Appointment, "id" | "business_id" | "created_at">>;
 type AppointmentConflictRow = Pick<Appointment, "id">;
-type ServiceStatusRow = { id: string; active: boolean };
+type ServiceStatusRow = { id: string; active: boolean; name?: string; price?: number };
 type ClientExistsRow = { id: string };
+type AppointmentDetailsRow = Appointment;
+type RevenueInsert = Omit<Revenue, "id" | "created_at">;
 
 type BusinessesTable = {
   select: (columns: string) => {
@@ -26,7 +29,11 @@ type BusinessesTable = {
 type AppointmentsTable = {
   select: (columns: string) => {
     eq: (column: "business_id", value: string) => {
-      order: (column: "starts_at", options: { ascending: boolean }) => Promise<QueryResult<Appointment[]>>;
+      gte: (column: "starts_at", value: string) => {
+        lte: (column: "starts_at", value: string) => {
+          order: (column: "starts_at", options: { ascending: boolean }) => Promise<QueryResult<Appointment[]>>;
+        };
+      };
     };
   };
   insert: (payload: AppointmentInsert) => {
@@ -46,6 +53,18 @@ type AppointmentsTable = {
   delete: () => {
     eq: (column: "id", value: string) => {
       eq: (column: "business_id", value: string) => Promise<QueryResult<null>>;
+    };
+  };
+};
+
+type AppointmentDetailsTable = {
+  select: (columns: string) => {
+    eq: (column: "business_id", value: string) => {
+      eq: (column: "id", value: string) => {
+        limit: (count: number) => {
+          single: () => Promise<QueryResult<AppointmentDetailsRow>>;
+        };
+      };
     };
   };
 };
@@ -70,6 +89,21 @@ type ServicesStatusTable = {
   };
 };
 
+type RevenuesTable = {
+  select: (columns: string) => {
+    eq: (column: "business_id", value: string) => {
+      eq: (column: "appointment_id", value: string) => {
+        limit: (count: number) => Promise<QueryResult<Pick<Revenue, "id">[]>>;
+      };
+    };
+  };
+  insert: (payload: RevenueInsert) => {
+    select: (columns: string) => {
+      single: () => Promise<QueryResult<Revenue>>;
+    };
+  };
+};
+
 type ClientsStatusTable = {
   select: (columns: string) => {
     eq: (column: "business_id", value: string) => {
@@ -88,6 +122,10 @@ function appointmentsTable(supabase: SupabaseServerClient) {
   return supabase.from("appointments") as unknown as AppointmentsTable;
 }
 
+function appointmentDetailsTable(supabase: SupabaseServerClient) {
+  return supabase.from("appointments") as unknown as AppointmentDetailsTable;
+}
+
 function appointmentConflictsTable(supabase: SupabaseServerClient) {
   return supabase.from("appointments") as unknown as AppointmentConflictsTable;
 }
@@ -96,13 +134,31 @@ function servicesStatusTable(supabase: SupabaseServerClient) {
   return supabase.from("services") as unknown as ServicesStatusTable;
 }
 
+function revenuesTable(supabase: SupabaseServerClient) {
+  return supabase.from("revenues") as unknown as RevenuesTable;
+}
+
 function clientsStatusTable(supabase: SupabaseServerClient) {
   return supabase.from("clients") as unknown as ClientsStatusTable;
 }
 
+function isMissingRevenueAppointmentLink(error: QueryError) {
+  return /appointment_id|schema cache|column/i.test(error.message);
+}
+
+function revenueAppointmentLinkError() {
+  return NextResponse.json(
+    {
+      error:
+        "В базе не настроена связь дохода с записью. Примените migration supabase/migrations/007_ensure_revenue_appointment_link.sql."
+    },
+    { status: 503 }
+  );
+}
+
 async function getSupabaseContext() {
   const envStatus = getSupabaseEnvStatus();
-  if (envStatus.missingEnv.length || envStatus.placeholderEnv.length) {
+  if (envStatus.missingEnv.length || envStatus.placeholderEnv.length || envStatus.invalidEnv.length) {
     return { error: supabaseConfigErrorResponse() };
   }
 
@@ -147,6 +203,20 @@ async function ensureActiveService(context: { supabase: SupabaseServerClient; bu
   return null;
 }
 
+async function getServiceForRevenue(context: { supabase: SupabaseServerClient; businessId: string }, serviceId: string) {
+  const { data, error } = await servicesStatusTable(context.supabase)
+    .select("id, active, name, price")
+    .eq("business_id", context.businessId)
+    .eq("id", serviceId)
+    .limit(1);
+
+  if (error || !data?.length) {
+    return { error: NextResponse.json({ error: "Service not found" }, { status: 404 }) };
+  }
+
+  return { service: data[0] };
+}
+
 async function ensureClientExists(context: { supabase: SupabaseServerClient; businessId: string }, clientId: string) {
   const { data, error } = await clientsStatusTable(context.supabase)
     .select("id")
@@ -184,13 +254,19 @@ async function ensureTimeAvailable(
   return null;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const context = await getSupabaseContext();
   if (context.error) return context.error;
+  const url = new URL(request.url);
+  const now = new Date();
+  const from = url.searchParams.get("from") ?? new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const to = url.searchParams.get("to") ?? new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString();
 
   const { data, error } = await appointmentsTable(context.supabase)
     .select("*")
     .eq("business_id", context.businessId)
+    .gte("starts_at", from)
+    .lte("starts_at", to)
     .order("starts_at", { ascending: true });
 
   if (error) {
@@ -206,6 +282,9 @@ export async function POST(request: Request) {
     const payload = await parseJson(request, appointmentSchema);
     const context = await getSupabaseContext();
     if (context.error) return context.error;
+
+    const limitError = await enforcePlanLimit(context.supabase, context.businessId, "appointments");
+    if (limitError) return limitError;
 
     const clientError = await ensureClientExists(context, payload.client_id);
     if (clientError) return clientError;
@@ -240,9 +319,16 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const payload = await parseJson(request, appointmentUpdateSchema);
+    const body = await request.json();
     const context = await getSupabaseContext();
     if (context.error) return context.error;
+
+    const actionPayload = appointmentStatusActionSchema.safeParse(body);
+    if (actionPayload.success) {
+      return updateAppointmentStatus(context, actionPayload.data.id, actionPayload.data.action);
+    }
+
+    const payload = appointmentUpdateSchema.parse(body);
 
     const { id, ...updates } = payload;
     if (updates.client_id) {
@@ -280,6 +366,96 @@ export async function PATCH(request: Request) {
   } catch (error) {
     return apiError(error);
   }
+}
+
+async function updateAppointmentStatus(
+  context: { supabase: SupabaseServerClient; businessId: string },
+  appointmentId: string,
+  action: "complete" | "cancel" | "no_show"
+) {
+  const { data: appointment, error: appointmentError } = await appointmentDetailsTable(context.supabase)
+    .select("*")
+    .eq("business_id", context.businessId)
+    .eq("id", appointmentId)
+    .limit(1)
+    .single();
+
+  if (appointmentError || !appointment) {
+    return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
+  }
+
+  const nextStatus: AppointmentStatus = action === "complete" ? "completed" : action === "cancel" ? "cancelled" : "no_show";
+
+  if (action === "complete") {
+    if (appointment.status === "completed") {
+      return NextResponse.json({ error: "Запись уже завершена. Доход уже создан." }, { status: 409 });
+    }
+
+    if (appointment.status !== "scheduled") {
+      return NextResponse.json({ error: "Завершить можно только запланированную запись." }, { status: 422 });
+    }
+
+    const { data: existingRevenue, error: existingRevenueError } = await revenuesTable(context.supabase)
+      .select("id")
+      .eq("business_id", context.businessId)
+      .eq("appointment_id", appointmentId)
+      .limit(1);
+
+    if (existingRevenueError) {
+      console.error("[appointments.status.revenueCheck]", { message: existingRevenueError.message });
+      if (isMissingRevenueAppointmentLink(existingRevenueError)) {
+        return revenueAppointmentLinkError();
+      }
+
+      return NextResponse.json({ error: "Failed to check appointment revenue" }, { status: 500 });
+    }
+
+    if (existingRevenue?.length) {
+      return NextResponse.json({ error: "Запись уже завершена. Доход уже создан." }, { status: 409 });
+    }
+  }
+
+  const { data: updatedAppointment, error: updateError } = await appointmentsTable(context.supabase)
+    .update({ status: nextStatus })
+    .eq("id", appointmentId)
+    .eq("business_id", context.businessId)
+    .select("*")
+    .single();
+
+  if (updateError || !updatedAppointment) {
+    console.error("[appointments.status.update]", { message: updateError?.message ?? "No appointment returned" });
+    return NextResponse.json({ error: "Failed to update appointment status" }, { status: 500 });
+  }
+
+  if (action !== "complete") {
+    return NextResponse.json({ data: updatedAppointment, meta: { source: "supabase" } });
+  }
+
+  const serviceResult = await getServiceForRevenue(context, updatedAppointment.service_id);
+  if (serviceResult.error) return serviceResult.error;
+
+  const { data: revenue, error: revenueError } = await revenuesTable(context.supabase)
+    .insert({
+      business_id: context.businessId,
+      appointment_id: updatedAppointment.id,
+      amount: Number(serviceResult.service.price ?? 0),
+      category: "Оплата за услугу",
+      description: serviceResult.service.name ? `Оплата за услугу: ${serviceResult.service.name}` : "Оплата за услугу",
+      occurred_at: updatedAppointment.starts_at
+    })
+    .select("*")
+    .single();
+
+  if (revenueError || !revenue) {
+    console.error("[appointments.status.revenue]", { message: revenueError?.message ?? "No revenue returned" });
+    if (revenueError && isMissingRevenueAppointmentLink(revenueError)) {
+      return revenueAppointmentLinkError();
+    }
+
+    return NextResponse.json({ error: "Failed to create appointment revenue" }, { status: 500 });
+  }
+
+  return NextResponse.json({ data: updatedAppointment, revenue, meta: { source: "supabase" } });
 }
 
 export async function DELETE(request: Request) {

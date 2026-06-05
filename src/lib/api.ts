@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getSupabaseServerEnvStatus } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 
 const maxJsonBytes = 64 * 1024;
-const requiredSupabaseEnv = [
-  "NEXT_PUBLIC_SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY"
-] as const;
 
 export class HttpError extends Error {
   constructor(
@@ -36,7 +32,7 @@ export async function parseJson<T extends z.ZodTypeAny>(request: Request, schema
 
 export async function requireAuth() {
   const envStatus = getSupabaseEnvStatus();
-  if (envStatus.missingEnv.length || envStatus.placeholderEnv.length) {
+  if (envStatus.missingEnv.length || envStatus.placeholderEnv.length || envStatus.invalidEnv.length) {
     return supabaseConfigErrorResponse();
   }
 
@@ -54,30 +50,24 @@ export async function requireAuth() {
 }
 
 export function getMissingSupabaseEnv() {
-  return requiredSupabaseEnv.filter((key) => !process.env[key]);
+  return getSupabaseServerEnvStatus().missingEnv;
 }
 
 export function getSupabaseEnvStatus() {
-  const missingEnv = getMissingSupabaseEnv();
-  const placeholderEnv = requiredSupabaseEnv.filter((key) => {
-    const value = process.env[key];
-    if (!value) return false;
-    return value.includes("your-project") || value.startsWith("your-") || value.includes("replace-with");
-  });
-
-  return { missingEnv, placeholderEnv };
+  return getSupabaseServerEnvStatus();
 }
 
 export function supabaseConfigErrorResponse() {
-  const { missingEnv, placeholderEnv } = getSupabaseEnvStatus();
+  const { invalidEnv, missingEnv, placeholderEnv } = getSupabaseEnvStatus();
 
   return NextResponse.json(
     {
       error: "Supabase is not configured",
       missingEnv,
       placeholderEnv,
+      invalidEnv,
       setup:
-        "Add the missing values to .env.local. You can find them in Supabase Dashboard -> Project Settings -> API."
+        "Add valid values to .env.local. NEXT_PUBLIC_SUPABASE_URL must be the Supabase Project URL origin, for example https://your-project.supabase.co, without /rest/v1 or another path. You can find it in Supabase Dashboard -> Project Settings -> API."
     },
     { status: 503 }
   );

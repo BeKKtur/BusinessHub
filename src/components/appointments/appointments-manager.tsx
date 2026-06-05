@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Clock, MoveRight, Plus, Save, X, XCircle } from "lucide-react";
+import { Ban, CalendarDays, CheckCircle2, Clock, Pencil, Plus, Save, UserX, X, XCircle } from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import type { Appointment, Client, Service } from "@/types/database";
+import type { Appointment, AppointmentStatus, Client, Service } from "@/types/database";
 import { formatApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -17,10 +19,10 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TD, TH, TBody, THead, TR, Table } from "@/components/ui/table";
 import { Toast, type ToastNotice } from "@/components/ui/toast";
 
-type FormStatus = "scheduled" | "completed" | "cancelled";
+type FormStatus = AppointmentStatus;
+type AppointmentAction = "complete" | "cancel" | "no_show";
 
 type AppointmentFormState = {
   client_id: string;
@@ -36,7 +38,7 @@ const appointmentFormSchema = z.object({
   service_id: z.string().trim().min(1, "Выберите активную услугу."),
   date: z.string().trim().min(1, "Выберите дату."),
   time: z.string().trim().min(1, "Выберите время."),
-  status: z.enum(["scheduled", "completed", "cancelled"]),
+  status: z.enum(["scheduled", "completed", "cancelled", "no_show"]),
   notes: z.string().optional()
 });
 
@@ -49,7 +51,13 @@ type AppointmentPayload = {
   notes?: string;
 };
 
-const statuses: FormStatus[] = ["scheduled", "completed", "cancelled"];
+const statuses: FormStatus[] = ["scheduled", "completed", "cancelled", "no_show"];
+const statusLabels: Record<FormStatus, string> = {
+  scheduled: "Запланировано",
+  completed: "Завершено",
+  cancelled: "Отменено",
+  no_show: "Не пришёл"
+};
 
 function toDateKey(date: Date) {
   const year = date.getFullYear();
@@ -75,6 +83,13 @@ function buildMonthDays(selectedDate: string) {
   return Array.from({ length: daysInMonth }, (_, index) => new Date(year, month, index + 1));
 }
 
+function monthRange(selectedDate: string) {
+  const date = new Date(`${selectedDate}T12:00:00`);
+  const from = new Date(date.getFullYear(), date.getMonth(), 1);
+  const to = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+  return { key: `${date.getFullYear()}-${date.getMonth()}`, from: from.toISOString(), to: to.toISOString() };
+}
+
 function initialForm(selectedDate: string, appointment?: Appointment): AppointmentFormState {
   if (appointment) {
     return {
@@ -82,7 +97,7 @@ function initialForm(selectedDate: string, appointment?: Appointment): Appointme
       service_id: appointment.service_id,
       date: appointmentDateKey(appointment),
       time: timeValue(appointment),
-      status: appointment.status === "rescheduled" ? "scheduled" : appointment.status,
+      status: appointment.status,
       notes: appointment.notes ?? ""
     };
   }
@@ -97,8 +112,9 @@ function initialForm(selectedDate: string, appointment?: Appointment): Appointme
   };
 }
 
-async function fetchAppointments() {
-  const response = await fetch("/api/appointments");
+async function fetchAppointments(from: string, to: string) {
+  const params = new URLSearchParams({ from, to });
+  const response = await fetch(`/api/appointments?${params.toString()}`);
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as Parameters<typeof formatApiError>[0];
     throw new Error(formatApiError(payload, "Failed to load appointments"));
@@ -138,7 +154,12 @@ async function saveAppointment(payload: AppointmentPayload, id?: string) {
   });
 
   if (!response.ok) {
-    const payloadError = (await response.json().catch(() => null)) as { error?: string } | null;
+    const payloadError = (await response.json().catch(() => null)) as { error?: string; code?: string } | null;
+    if (payloadError?.code === "PLAN_LIMIT_REACHED") {
+      const error = new Error(payloadError.error ?? "Достигнут лимит тарифа Free.");
+      error.name = "PLAN_LIMIT_REACHED";
+      throw error;
+    }
     throw new Error(payloadError?.error ?? "Failed to save appointment");
   }
 
@@ -160,6 +181,21 @@ async function deleteAppointment(id: string) {
   return id;
 }
 
+async function updateAppointmentAction(id: string, action: AppointmentAction) {
+  const response = await fetch("/api/appointments", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, action })
+  });
+
+  if (!response.ok) {
+    const payloadError = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(payloadError?.error ?? "Failed to update appointment status");
+  }
+
+  return ((await response.json()) as { data: Appointment }).data;
+}
+
 function buildPayload(form: AppointmentFormState, services: Service[]): AppointmentPayload {
   const service = services.find((item) => item.id === form.service_id);
   const startsAt = new Date(`${form.date}T${form.time}:00`);
@@ -177,6 +213,8 @@ function buildPayload(form: AppointmentFormState, services: Service[]): Appointm
 
 export function AppointmentsManager() {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [selectedDate, setSelectedDate] = useState(toDateKey(new Date()));
   const [formOpen, setFormOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | undefined>();
@@ -193,21 +231,27 @@ export function AppointmentsManager() {
   });
   const [deleteTarget, setDeleteTarget] = useState<Appointment | undefined>();
   const [notice, setNotice] = useState<ToastNotice | undefined>();
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [formError, setFormError] = useState<string | undefined>();
+  const [actionTargetId, setActionTargetId] = useState<string | undefined>();
+  const selectedMonth = useMemo(() => monthRange(selectedDate), [selectedDate]);
 
   const appointmentsQuery = useQuery({
-    queryKey: ["appointments"],
-    queryFn: fetchAppointments
+    queryKey: ["appointments", selectedMonth.key],
+    queryFn: () => fetchAppointments(selectedMonth.from, selectedMonth.to),
+    staleTime: 60_000
   });
 
   const clientsQuery = useQuery({
     queryKey: ["clients"],
-    queryFn: fetchClients
+    queryFn: fetchClients,
+    staleTime: 120_000
   });
 
   const servicesQuery = useQuery({
     queryKey: ["services"],
-    queryFn: fetchServices
+    queryFn: fetchServices,
+    staleTime: 120_000
   });
 
   const appointments = useMemo(() => appointmentsQuery.data ?? [], [appointmentsQuery.data]);
@@ -219,7 +263,7 @@ export function AppointmentsManager() {
   const saveMutation = useMutation({
     mutationFn: async (values: AppointmentFormState) => saveAppointment(buildPayload(values, services), editingAppointment?.id),
     onSuccess: (savedAppointment) => {
-      queryClient.setQueryData<Appointment[]>(["appointments"], (current = []) => {
+      queryClient.setQueryData<Appointment[]>(["appointments", selectedMonth.key], (current = []) => {
         const exists = current.some((item) => item.id === savedAppointment.id);
         return exists
           ? current.map((item) => (item.id === savedAppointment.id ? savedAppointment : item))
@@ -232,6 +276,9 @@ export function AppointmentsManager() {
       setNotice({ type: "success", message: editingAppointment ? "Запись обновлена" : "Запись создана" });
     },
     onError: (error) => {
+      if (error instanceof Error && error.name === "PLAN_LIMIT_REACHED") {
+        setUpgradeOpen(true);
+      }
       setNotice({ type: "error", message: error instanceof Error ? error.message : "Не удалось сохранить запись" });
     }
   });
@@ -239,7 +286,7 @@ export function AppointmentsManager() {
   const deleteMutation = useMutation({
     mutationFn: deleteAppointment,
     onSuccess: (deletedId) => {
-      queryClient.setQueryData<Appointment[]>(["appointments"], (current = []) =>
+      queryClient.setQueryData<Appointment[]>(["appointments", selectedMonth.key], (current = []) =>
         current.filter((item) => item.id !== deletedId)
       );
       setDeleteTarget(undefined);
@@ -250,6 +297,36 @@ export function AppointmentsManager() {
     }
   });
 
+  const actionMutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: AppointmentAction }) => updateAppointmentAction(id, action),
+    onSuccess: (updatedAppointment) => {
+      queryClient.setQueryData<Appointment[]>(["appointments", selectedMonth.key], (current = []) =>
+        current.map((item) => (item.id === updatedAppointment.id ? updatedAppointment : item))
+      );
+      void queryClient.invalidateQueries({ queryKey: ["appointments", selectedMonth.key] });
+      const message =
+        updatedAppointment.status === "completed"
+          ? "Запись завершена, доход создан"
+          : updatedAppointment.status === "cancelled"
+            ? "Запись отменена"
+            : "Отмечено: клиент не пришёл";
+      setNotice({ type: "success", message });
+    },
+    onError: (error) => {
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Не удалось изменить статус записи" });
+    },
+    onSettled: () => {
+      setActionTargetId(undefined);
+    }
+  });
+
+  const openCreateForm = useCallback((date = selectedDate) => {
+    setEditingAppointment(undefined);
+    form.reset(initialForm(date));
+    setFormError(undefined);
+    setFormOpen(true);
+  }, [form, selectedDate]);
+
   useEffect(() => {
     function openFromTopbar() {
       openCreateForm();
@@ -257,14 +334,14 @@ export function AppointmentsManager() {
 
     window.addEventListener("businesshub:new-appointment", openFromTopbar);
     return () => window.removeEventListener("businesshub:new-appointment", openFromTopbar);
-  });
+  }, [openCreateForm]);
 
-  function openCreateForm(date = selectedDate) {
-    setEditingAppointment(undefined);
-    form.reset(initialForm(date));
-    setFormError(undefined);
-    setFormOpen(true);
-  }
+  useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      openCreateForm();
+      router.replace("/appointments");
+    }
+  }, [openCreateForm, router, searchParams]);
 
   function openEditForm(appointment: Appointment) {
     setEditingAppointment(appointment);
@@ -286,6 +363,11 @@ export function AppointmentsManager() {
 
     if (hasConflict) return "Это время уже занято. Выберите другое время.";
     return undefined;
+  }
+
+  function runAppointmentAction(id: string, action: AppointmentAction) {
+    setActionTargetId(id);
+    actionMutation.mutate({ id, action });
   }
 
   const monthDays = useMemo(() => buildMonthDays(selectedDate), [selectedDate]);
@@ -381,58 +463,84 @@ export function AppointmentsManager() {
                   [appointmentsQuery.error, clientsQuery.error, servicesQuery.error].find((error) => error instanceof Error)
                     ?.message ?? "Не удалось загрузить данные расписания"
                 }
+                actionHref="/login"
+                actionLabel="Войти снова"
               />
             ) : selectedAppointments.length ? (
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Время</TH>
-                    <TH>Клиент</TH>
-                    <TH>Услуга</TH>
-                    <TH>Статус</TH>
-                    <TH>Действия</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {selectedAppointments.map((appointment) => (
-                    <TR key={appointment.id}>
-                      <TD>
-                        <Badge>
-                          <Clock className="mr-1 h-3 w-3" />
-                          {timeValue(appointment)}
-                        </Badge>
-                      </TD>
-                      <TD>{clients.find((client) => client.id === appointment.client_id)?.name ?? "Клиент"}</TD>
-                      <TD>{services.find((service) => service.id === appointment.service_id)?.name ?? "Услуга"}</TD>
-                      <TD>
+              <div className="space-y-3">
+                {selectedAppointments.map((appointment) => {
+                  const isScheduled = appointment.status === "scheduled";
+                  const isActionLoading = actionMutation.isPending && actionTargetId === appointment.id;
+                  const clientName = clients.find((client) => client.id === appointment.client_id)?.name ?? "Клиент";
+                  const serviceName = services.find((service) => service.id === appointment.service_id)?.name ?? "Услуга";
+
+                  return (
+                    <div key={appointment.id} className="grid min-w-0 gap-3 rounded-lg border bg-background p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+                      <Badge className="w-fit shrink-0">
+                        <Clock className="mr-1 h-3 w-3" />
+                        {timeValue(appointment)}
+                      </Badge>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium" title={clientName}>
+                          {clientName}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground" title={serviceName}>
+                          {serviceName}
+                        </div>
+                      </div>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
                         <Badge
                           className={cn(
-                            appointment.status === "completed" && "border-primary/30 bg-primary/10 text-primary",
-                            appointment.status === "cancelled" && "border-destructive/30 bg-destructive/10 text-destructive"
+                            "shrink-0",
+                            appointment.status === "completed" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-600",
+                            appointment.status === "cancelled" && "border-destructive/30 bg-destructive/10 text-destructive",
+                            appointment.status === "no_show" && "border-amber-500/30 bg-amber-500/10 text-amber-600"
                           )}
                         >
-                          {appointment.status}
+                          {statusLabels[appointment.status]}
                         </Badge>
-                      </TD>
-                      <TD>
-                        <div className="flex gap-2 text-muted-foreground">
-                          <Button variant="ghost" size="icon" aria-label="Открыть запись" onClick={() => openEditForm(appointment)}>
-                            <MoveRight className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Удалить запись"
-                            onClick={() => setDeleteTarget(appointment)}
-                          >
-                            <XCircle className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TD>
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
+                        {isScheduled ? (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              aria-label="Завершить запись"
+                              disabled={isActionLoading}
+                              onClick={() => runAppointmentAction(appointment.id, "complete")}
+                            >
+                              {isActionLoading ? <Clock className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              aria-label="Отменить запись"
+                              disabled={isActionLoading}
+                              onClick={() => runAppointmentAction(appointment.id, "cancel")}
+                            >
+                              {isActionLoading ? <Clock className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              aria-label="Отметить неявку"
+                              disabled={isActionLoading}
+                              onClick={() => runAppointmentAction(appointment.id, "no_show")}
+                            >
+                              {isActionLoading ? <Clock className="h-4 w-4 animate-spin" /> : <UserX className="h-4 w-4" />}
+                            </Button>
+                          </>
+                        ) : null}
+                        <Button variant="ghost" size="icon" aria-label="Редактировать запись" onClick={() => openEditForm(appointment)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" aria-label="Удалить запись" onClick={() => setDeleteTarget(appointment)}>
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <EmptyState
                 icon={CalendarDays}
@@ -533,7 +641,7 @@ export function AppointmentsManager() {
                   >
                     {statuses.map((status) => (
                       <option key={status} value={status}>
-                        {status}
+                        {statusLabels[status]}
                       </option>
                     ))}
                   </select>
@@ -598,6 +706,29 @@ export function AppointmentsManager() {
                 </Button>
                 <Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(deleteTarget.id)}>
                   {deleteMutation.isPending ? "Удаление..." : "Удалить"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {upgradeOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+          <Card className="w-full max-w-md shadow-premium">
+            <CardHeader>
+              <CardTitle>Нужен тариф Pro</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                На Free можно создать до 100 записей. Перейдите на Pro или Business, чтобы продолжить запись клиентов.
+              </p>
+              <div className="mt-6 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setUpgradeOpen(false)}>
+                  Позже
+                </Button>
+                <Button asChild>
+                  <Link href="/billing">Upgrade</Link>
                 </Button>
               </div>
             </CardContent>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Search, Save, Trash2, UserPlus, Users, X } from "lucide-react";
@@ -23,7 +24,7 @@ type ClientFormInput = z.input<typeof clientSchema>;
 type ClientFormValues = z.output<typeof clientSchema>;
 
 async function fetchClients() {
-  const response = await fetch("/api/clients");
+  const response = await fetch("/api/clients?limit=100");
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as Parameters<typeof formatApiError>[0];
     throw new Error(formatApiError(payload, "Failed to load clients"));
@@ -41,7 +42,12 @@ async function saveClient(payload: ClientFormValues, id?: string) {
   });
 
   if (!response.ok) {
-    const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null;
+    const errorPayload = (await response.json().catch(() => null)) as { error?: string; code?: string } | null;
+    if (errorPayload?.code === "PLAN_LIMIT_REACHED") {
+      const error = new Error(errorPayload.error ?? "Достигнут лимит тарифа Free.");
+      error.name = "PLAN_LIMIT_REACHED";
+      throw error;
+    }
     throw new Error(errorPayload?.error ?? "Failed to save client");
   }
 
@@ -76,9 +82,11 @@ function formDefaults(client?: Client): ClientFormValues {
 export function ClientsManager() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | undefined>();
   const [deleteTarget, setDeleteTarget] = useState<Client | undefined>();
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [notice, setNotice] = useState<ToastNotice | undefined>();
 
   const form = useForm<ClientFormInput, unknown, ClientFormValues>({
@@ -88,18 +96,24 @@ export function ClientsManager() {
 
   const clientsQuery = useQuery({
     queryKey: ["clients"],
-    queryFn: fetchClients
+    queryFn: fetchClients,
+    staleTime: 120_000
   });
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(search), 250);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
 
   const clients = useMemo(() => clientsQuery.data ?? [], [clientsQuery.data]);
   const filteredClients = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = debouncedSearch.trim().toLowerCase();
     if (!query) return clients;
 
     return clients.filter((client) =>
       [client.name, client.phone, client.email ?? ""].some((value) => value.toLowerCase().includes(query))
     );
-  }, [clients, search]);
+  }, [clients, debouncedSearch]);
 
   const saveMutation = useMutation({
     mutationFn: (values: ClientFormValues) => saveClient(values, editingClient?.id),
@@ -116,6 +130,9 @@ export function ClientsManager() {
       setNotice({ type: "success", message: editingClient ? "Клиент обновлен" : "Клиент создан" });
     },
     onError: (error) => {
+      if (error instanceof Error && error.name === "PLAN_LIMIT_REACHED") {
+        setUpgradeOpen(true);
+      }
       setNotice({ type: "error", message: error instanceof Error ? error.message : "Не удалось сохранить клиента" });
     }
   });
@@ -184,7 +201,11 @@ export function ClientsManager() {
               <Skeleton className="h-12 w-2/3" />
             </div>
           ) : clientsQuery.isError ? (
-            <ErrorState title={clientsQuery.error instanceof Error ? clientsQuery.error.message : "Не удалось загрузить клиентов"} />
+            <ErrorState
+              title={clientsQuery.error instanceof Error ? clientsQuery.error.message : "Не удалось загрузить клиентов"}
+              actionHref="/login"
+              actionLabel="Войти снова"
+            />
           ) : filteredClients.length ? (
             <Table>
               <THead>
@@ -317,6 +338,29 @@ export function ClientsManager() {
                 </Button>
                 <Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(deleteTarget.id)}>
                   {deleteMutation.isPending ? "Удаление..." : "Удалить"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {upgradeOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+          <Card className="w-full max-w-md shadow-premium">
+            <CardHeader>
+              <CardTitle>Нужен тариф Pro</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                На Free можно хранить до 50 клиентов. Перейдите на Pro или Business, чтобы продолжить рост базы.
+              </p>
+              <div className="mt-6 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setUpgradeOpen(false)}>
+                  Позже
+                </Button>
+                <Button asChild>
+                  <Link href="/billing">Upgrade</Link>
                 </Button>
               </div>
             </CardContent>

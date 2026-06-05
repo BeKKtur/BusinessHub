@@ -53,11 +53,27 @@ npx supabase login
 npx supabase link --project-ref your-project-ref
 ```
 
-8. Apply migrations:
+8. Apply migrations with the Supabase CLI:
 
 ```bash
 npm run db:migrate
 ```
+
+This runs `npx supabase db push` and applies every SQL file from `supabase/migrations` to the linked project.
+
+If you do not want to use the CLI, apply the schema manually:
+
+1. Open `Supabase Dashboard -> SQL Editor`.
+2. Click `New query`.
+3. Paste and run the contents of these files in order:
+   - `supabase/migrations/001_initial_schema.sql`
+   - `supabase/migrations/002_add_service_description.sql`
+   - `supabase/migrations/003_production_service_appointment_constraints.sql`
+   - `supabase/migrations/004_add_client_telegram.sql`
+   - `supabase/migrations/005_client_constraints.sql`
+4. Open `Table Editor` and confirm these tables exist: `profiles`, `businesses`, `clients`, `services`, `appointments`, `expenses`, `revenues`, `subscriptions`, `payments`, `notifications`.
+
+After the migration is applied, registration can create a Supabase Auth user, then insert the matching `profiles` and `businesses` rows.
 
 9. Create at least one user through the app or Supabase Auth. The seed script attaches demo data to the first profile.
 10. Run seed data locally with:

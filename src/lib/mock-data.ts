@@ -104,7 +104,7 @@ export const appointments: Appointment[] = [
     service_id: "service-1",
     starts_at: "2026-06-05T08:00:00Z",
     ends_at: "2026-06-05T09:00:00Z",
-    status: "rescheduled",
+    status: "no_show",
     notes: "Перенесено с четверга",
     created_at: "2026-06-02T09:00:00Z"
   }

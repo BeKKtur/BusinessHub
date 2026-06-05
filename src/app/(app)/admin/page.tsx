@@ -1,53 +1,37 @@
-import { ShieldCheck } from "lucide-react";
+import { headers } from "next/headers";
 import { PageHeader } from "@/components/app/page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TD, TH, TBody, THead, TR, Table } from "@/components/ui/table";
+import { AdminAccessDenied } from "@/components/admin/admin-access-denied";
+import { AdminManager } from "@/components/admin/admin-manager";
+import { createClient } from "@/lib/supabase/server";
+import type { ProfileRole } from "@/types/database";
 
-export default function AdminPage() {
+type AdminPageProfile = { role: ProfileRole; blocked: boolean };
+
+export default async function AdminPage({ searchParams }: { searchParams?: Promise<{ e2e_role?: string }> }) {
+  const requestHeaders = await headers();
+  const params = searchParams ? await searchParams : {};
+  const e2eAuthBypass = process.env.E2E_AUTH_BYPASS === "true" && requestHeaders.get("x-businesshub-e2e-auth") === "1";
+  let allowed = false;
+
+  if (e2eAuthBypass) {
+    allowed = (params.e2e_role ?? requestHeaders.get("x-businesshub-e2e-role")) !== "user";
+  } else {
+    const supabase = await createClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      const { data: profileData } = await supabase.from("profiles").select("role, blocked").eq("id", user.id).maybeSingle();
+      const profile = profileData as AdminPageProfile | null;
+      allowed = profile?.role === "super_admin" && !profile.blocked;
+    }
+  }
+
   return (
     <>
-      <PageHeader title="Admin Panel" description="Пользователи, подписки, доход платформы, активность и логи." />
-      <div className="grid gap-4 md:grid-cols-4">
-        {["Пользователи: 128", "MRR: $2,840", "Активность: 91%", "Ошибки: 0"].map((item) => (
-          <Card key={item}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                {item}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        ))}
-      </div>
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>Логи платформы</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <THead>
-              <TR>
-                <TH>Событие</TH>
-                <TH>Пользователь</TH>
-                <TH>Время</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {[
-                ["subscription.updated", "owner@salon.com", "10:40"],
-                ["telegram.sent", "admin@barber.com", "10:17"],
-                ["payment.completed", "owner@wash.com", "09:55"]
-              ].map(([event, user, time]) => (
-                <TR key={event}>
-                  <TD>{event}</TD>
-                  <TD>{user}</TD>
-                  <TD>{time}</TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <PageHeader title="Admin Panel" description="Пользователи, бизнесы, подписки, активность и логи платформы." />
+      {allowed ? <AdminManager /> : <AdminAccessDenied />}
     </>
   );
 }

@@ -1,18 +1,20 @@
 import { NextResponse } from "next/server";
-import { revenueSeries } from "@/lib/mock-data";
-import { requireAuth } from "@/lib/api";
+import { getAnalyticsData } from "@/lib/server/business-data";
 
 export async function GET() {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const result = await getAnalyticsData();
+
+  if (result.error) {
+    return NextResponse.json({ error: result.error.error }, { status: result.error.status });
+  }
 
   return NextResponse.json({
     data: {
-      new_clients: 32,
-      repeat_clients_rate: 68,
-      top_services: ["Окрашивание", "Стрижка и укладка"],
-      booking_conversion: 84,
-      revenue_by_month: revenueSeries
+      new_clients: result.data.newClients,
+      repeat_clients_rate: result.data.repeatClientsRate,
+      top_services: result.data.topServices,
+      booking_conversion: result.data.bookingConversion,
+      revenue_by_month: result.data.revenueSeries
     }
   });
 }

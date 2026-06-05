@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { createTestBackend, expectNoAppErrors, mockCrudApi } from "./helpers/businesshub-fixtures";
+import { authenticateE2E, createTestBackend, expectNoAppErrors, mockCrudApi } from "./helpers/businesshub-fixtures";
 
 test.describe("clients services appointments CRUD", () => {
   test("client create, validation, edit, search, refresh and delete", async ({ page }) => {
+    await authenticateE2E(page);
     await mockCrudApi(page);
     await page.goto("/clients");
 
@@ -40,6 +41,7 @@ test.describe("clients services appointments CRUD", () => {
   });
 
   test("service create, validation, edit, active toggle, refresh and delete", async ({ page }) => {
+    await authenticateE2E(page);
     await mockCrudApi(page);
     await page.goto("/services");
 
@@ -77,6 +79,7 @@ test.describe("clients services appointments CRUD", () => {
 
   test("appointment create, active service filtering, conflict warning, calendar filtering, edit and delete", async ({ page }) => {
     const state = createTestBackend();
+    await authenticateE2E(page);
     await mockCrudApi(page, state);
     await page.goto("/appointments");
 
@@ -108,7 +111,7 @@ test.describe("clients services appointments CRUD", () => {
     await page.getByRole("button", { name: "4", exact: true }).click();
     await expect(page.getByText("Алина Морозова")).toBeVisible();
 
-    await page.getByRole("button", { name: "Открыть запись" }).first().click();
+    await page.getByRole("button", { name: "Редактировать запись" }).first().click();
     await page.getByLabel("Время").fill("10:00");
     await page.getByRole("button", { name: "Сохранить" }).click();
     await expect(page.getByText("Запись обновлена")).toBeVisible();
@@ -117,6 +120,70 @@ test.describe("clients services appointments CRUD", () => {
     await page.getByRole("button", { name: "Удалить запись" }).first().click();
     await page.getByRole("button", { name: "Удалить", exact: true }).click();
     await expect(page.getByText("Запись удалена")).toBeVisible();
+    await expectNoAppErrors(page);
+  });
+
+  test("appointment completion creates one automatic revenue and cancelled appointment does not", async ({ page }) => {
+    const state = createTestBackend();
+    await authenticateE2E(page);
+    await mockCrudApi(page, state);
+    await page.goto("/appointments");
+
+    await page.getByRole("button", { name: "Создать запись" }).first().click();
+    await page.getByLabel("Клиент").selectOption("client-1");
+    await page.getByLabel("Услуга").selectOption("service-1");
+    await page.getByLabel("Дата").fill("2026-06-04");
+    await page.getByLabel("Время").fill("12:00");
+    await page.getByRole("button", { name: "Сохранить" }).click();
+    await expect(page.getByText("Запись создана")).toBeVisible();
+
+    await page.getByRole("button", { name: "Завершить запись" }).first().click();
+    await expect(page.getByText("Запись завершена, доход создан")).toBeVisible();
+    await expect(page.getByText("Завершено")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Завершить запись" })).toHaveCount(0);
+    expect(state.revenues).toHaveLength(1);
+    expect(state.revenues[0]).toMatchObject({ category: "Оплата за услугу", amount: 25 });
+
+    const completedId = state.appointments.find((appointment) => appointment.status === "completed")?.id;
+    const duplicateResponse = await page.evaluate(async (id) => {
+      const response = await fetch("/api/appointments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "complete" })
+      });
+      return { status: response.status, body: await response.json() };
+    }, completedId);
+    expect(duplicateResponse.status).toBe(409);
+    expect(state.revenues).toHaveLength(1);
+
+    await page.getByRole("button", { name: "Создать запись" }).first().click();
+    await page.getByLabel("Клиент").selectOption("client-1");
+    await page.getByLabel("Услуга").selectOption("service-1");
+    await page.getByLabel("Дата").fill("2026-06-04");
+    await page.getByLabel("Время").fill("13:00");
+    await page.getByRole("button", { name: "Сохранить" }).click();
+    await expect(page.getByText("Запись создана")).toBeVisible();
+
+    await page.getByRole("button", { name: "Отменить запись" }).last().click();
+    await expect(page.getByText("Запись отменена")).toBeVisible();
+    await expect(page.getByText("Отменено")).toBeVisible();
+    expect(state.revenues).toHaveLength(1);
+
+    await page.getByRole("button", { name: "Создать запись" }).first().click();
+    await page.getByLabel("Клиент").selectOption("client-1");
+    await page.getByLabel("Услуга").selectOption("service-1");
+    await page.getByLabel("Дата").fill("2026-06-04");
+    await page.getByLabel("Время").fill("14:00");
+    await page.getByRole("button", { name: "Сохранить" }).click();
+    await expect(page.getByText("Запись создана")).toBeVisible();
+
+    await page.getByRole("button", { name: "Отметить неявку" }).last().click();
+    await expect(page.getByText("Отмечено: клиент не пришёл")).toBeVisible();
+    await expect(page.getByText("Не пришёл", { exact: true })).toBeVisible();
+    expect(state.revenues).toHaveLength(1);
+    await expect(page.getByRole("button", { name: "Завершить запись" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Отменить запись" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Отметить неявку" })).toHaveCount(0);
     await expectNoAppErrors(page);
   });
 });

@@ -89,7 +89,8 @@ export function ServicesManager() {
 
   const servicesQuery = useQuery({
     queryKey: ["services"],
-    queryFn: fetchServices
+    queryFn: fetchServices,
+    staleTime: 120_000
   });
 
   const services = servicesQuery.data ?? [];
@@ -194,7 +195,11 @@ export function ServicesManager() {
               <Skeleton className="h-12 w-2/3" />
             </div>
           ) : servicesQuery.isError ? (
-            <ErrorState title={servicesQuery.error instanceof Error ? servicesQuery.error.message : "Не удалось загрузить услуги"} />
+            <ErrorState
+              title={servicesQuery.error instanceof Error ? servicesQuery.error.message : "Не удалось загрузить услуги"}
+              actionHref="/login"
+              actionLabel="Войти снова"
+            />
           ) : services.length ? (
             <Table>
               <THead>

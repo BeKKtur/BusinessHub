@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell, Menu, Plus, Search } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -10,11 +10,15 @@ import { useAppStore } from "@/store/app-store";
 export function Topbar() {
   const setSidebarOpen = useAppStore((state) => state.setSidebarOpen);
   const pathname = usePathname();
+  const router = useRouter();
 
   function handleNewAppointment() {
     if (pathname === "/appointments") {
       window.dispatchEvent(new Event("businesshub:new-appointment"));
+      return;
     }
+
+    router.push("/appointments?new=1");
   }
 
   return (

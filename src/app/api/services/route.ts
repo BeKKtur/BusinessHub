@@ -57,7 +57,7 @@ function servicesTable(supabase: SupabaseServerClient) {
 
 async function getSupabaseContext() {
   const envStatus = getSupabaseEnvStatus();
-  if (envStatus.missingEnv.length || envStatus.placeholderEnv.length) {
+  if (envStatus.missingEnv.length || envStatus.placeholderEnv.length || envStatus.invalidEnv.length) {
     return { error: supabaseConfigErrorResponse() };
   }
 

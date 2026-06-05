@@ -52,7 +52,7 @@ export const appointmentSchema = z.object({
   service_id: z.string().trim().min(1, "Service is required"),
   starts_at: z.string().datetime("Appointment date and time are required"),
   ends_at: z.string().datetime("Appointment end time is required"),
-  status: z.enum(["scheduled", "completed", "cancelled"]).default("scheduled"),
+  status: z.enum(["scheduled", "completed", "cancelled", "no_show"]).default("scheduled"),
   notes: z.string().optional()
 });
 
@@ -60,6 +60,53 @@ export const appointmentUpdateSchema = appointmentSchema.partial().extend({
   id: z.string().min(1)
 });
 
+export const appointmentStatusActionSchema = z.object({
+  id: z.string().min(1),
+  action: z.enum(["complete", "cancel", "no_show"])
+});
+
 export const appointmentDeleteSchema = z.object({
   id: z.string().min(1)
 });
+
+export const financeOperationSchema = z.object({
+  type: z.enum(["income", "expense"]),
+  amount: z.number().positive("Amount must be greater than 0"),
+  category: z.string().trim().min(1, "Category is required"),
+  description: z.string().trim().optional(),
+  occurred_at: z.string().datetime("Operation date is required")
+});
+
+export const financeOperationUpdateSchema = financeOperationSchema.partial().extend({
+  id: z.string().min(1),
+  type: z.enum(["income", "expense"])
+});
+
+export const financeOperationDeleteSchema = z.object({
+  id: z.string().min(1),
+  type: z.enum(["income", "expense"])
+});
+
+export const telegramSettingsSchema = z.object({
+  bot_token: z.string().trim().min(1, "Bot Token is required"),
+  chat_id: z.string().trim().min(1, "Chat ID is required"),
+  enabled: z.boolean(),
+  reminder_24h: z.boolean(),
+  reminder_2h: z.boolean()
+});
+
+export const telegramActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("save"),
+    settings: telegramSettingsSchema
+  }),
+  z.object({
+    action: z.literal("test_token"),
+    bot_token: z.string().trim().min(1, "Bot Token is required")
+  }),
+  z.object({
+    action: z.literal("send_test"),
+    bot_token: z.string().trim().min(1, "Bot Token is required"),
+    chat_id: z.string().trim().min(1, "Chat ID is required")
+  })
+]);

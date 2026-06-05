@@ -1,0 +1,10 @@
+create index if not exists clients_business_created_idx on public.clients (business_id, created_at desc);
+create index if not exists services_business_created_idx on public.services (business_id, created_at desc);
+create index if not exists services_business_active_idx on public.services (business_id, active);
+create index if not exists appointments_business_status_idx on public.appointments (business_id, status);
+create index if not exists appointments_business_client_idx on public.appointments (business_id, client_id);
+create index if not exists appointments_business_service_idx on public.appointments (business_id, service_id);
+create index if not exists appointments_business_created_idx on public.appointments (business_id, created_at desc);
+create index if not exists revenues_business_created_idx on public.revenues (business_id, created_at desc);
+create index if not exists expenses_business_created_idx on public.expenses (business_id, created_at desc);
+create index if not exists notifications_business_type_idx on public.notifications (business_id, channel, type);

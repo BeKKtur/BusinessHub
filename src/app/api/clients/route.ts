@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiError, getSupabaseEnvStatus, parseJson, supabaseConfigErrorResponse } from "@/lib/api";
+import { enforcePlanLimit } from "@/lib/server/billing";
 import { createClient } from "@/lib/supabase/server";
 import { clientDeleteSchema, clientSchema, clientUpdateSchema } from "@/lib/validators";
 import type { Client } from "@/types/database";
@@ -23,7 +24,9 @@ type BusinessesTable = {
 type ClientsTable = {
   select: (columns: string) => {
     eq: (column: "business_id", value: string) => {
-      order: (column: "created_at", options: { ascending: boolean }) => Promise<QueryResult<Client[]>>;
+      order: (column: "created_at", options: { ascending: boolean }) => {
+        limit: (count: number) => Promise<QueryResult<Client[]>>;
+      };
     };
   };
   insert: (payload: ClientInsert) => {
@@ -57,7 +60,7 @@ function clientsTable(supabase: SupabaseServerClient) {
 
 async function getSupabaseContext() {
   const envStatus = getSupabaseEnvStatus();
-  if (envStatus.missingEnv.length || envStatus.placeholderEnv.length) {
+  if (envStatus.missingEnv.length || envStatus.placeholderEnv.length || envStatus.invalidEnv.length) {
     return { error: supabaseConfigErrorResponse() };
   }
 
@@ -84,14 +87,17 @@ async function getSupabaseContext() {
   return { supabase, businessId: business.id };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const context = await getSupabaseContext();
   if (context.error) return context.error;
+  const url = new URL(request.url);
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 100), 1), 200);
 
   const { data, error } = await clientsTable(context.supabase)
     .select("*")
     .eq("business_id", context.businessId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(limit);
 
   if (error) {
     console.error("[clients.get]", { message: error.message });
@@ -107,6 +113,9 @@ export async function POST(request: Request) {
     if (context.error) return context.error;
 
     const payload = await parseJson(request, clientSchema);
+    const limitError = await enforcePlanLimit(context.supabase, context.businessId, "clients");
+    if (limitError) return limitError;
+
     const { data, error } = await clientsTable(context.supabase)
       .insert({
         business_id: context.businessId,

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowRight, CalendarCheck, LineChart, Users } from "lucide-react";
+import type { Route } from "next";
+import { ArrowRight, CalendarCheck, LineChart, Mail, Send, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function HomePage() {
@@ -33,7 +34,7 @@ export default function HomePage() {
                   </Link>
                 </Button>
                 <Button asChild variant="outline" size="lg">
-                  <Link href="/dashboard">Открыть demo</Link>
+                  <Link href={"/demo" as Route}>Открыть demo</Link>
                 </Button>
               </div>
             </div>
@@ -43,8 +44,8 @@ export default function HomePage() {
                   { icon: CalendarCheck, label: "Сегодняшние записи", value: "12" },
                   { icon: Users, label: "Новые клиенты", value: "+18%" },
                   { icon: LineChart, label: "Доход за месяц", value: "$3,700" }
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-lg border bg-background p-4">
+                ].map((item, index) => (
+                  <div key={`${item.label}-${index}`} className="flex items-center justify-between rounded-lg border bg-background p-4">
                     <div className="flex items-center gap-3">
                       <item.icon className="h-5 w-5 text-primary" />
                       <span className="text-sm text-muted-foreground">{item.label}</span>
@@ -56,14 +57,32 @@ export default function HomePage() {
             </div>
           </div>
           <div className="grid gap-3 pb-4 md:grid-cols-4">
-            {["Салоны красоты", "Автомойки", "Репетиторство", "Медицинские кабинеты"].map((item) => (
-              <div key={item} className="rounded-lg border bg-card/70 p-4 text-sm text-muted-foreground">
+            {["Салоны красоты", "Автомойки", "Репетиторство", "Медицинские кабинеты"].map((item, index) => (
+              <div key={`${item}-${index}`} className="rounded-lg border bg-card/70 p-4 text-sm text-muted-foreground">
                 {item}
               </div>
             ))}
           </div>
         </div>
       </section>
+      <footer className="border-t px-4 py-8">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+          <div>BusinessHub · Поддержка и вопросы по оплате</div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <a className="flex items-center gap-2 hover:text-foreground" href="mailto:batyrbekovbektur0@gmail.com">
+              <Mail className="h-4 w-4" />
+              batyrbekovbektur0@gmail.com
+            </a>
+            <a className="flex items-center gap-2 hover:text-foreground" href="https://t.me/batyrbekovbektur0">
+              <Send className="h-4 w-4" />
+              @batyrbekovbektur0
+            </a>
+            <Link className="hover:text-foreground" href={"/contact" as Route}>
+              Контакты
+            </Link>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }

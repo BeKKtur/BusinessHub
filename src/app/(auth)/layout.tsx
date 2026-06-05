@@ -22,8 +22,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             </p>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            {["Клиенты", "Записи", "Доходы"].map((item) => (
-              <div key={item} className="rounded-lg border bg-background/70 p-4 text-sm font-medium">
+            {["Клиенты", "Записи", "Доходы"].map((item, index) => (
+              <div key={`${item}-${index}`} className="rounded-lg border bg-background/70 p-4 text-sm font-medium">
                 {item}
               </div>
             ))}
