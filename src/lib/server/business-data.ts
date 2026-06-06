@@ -382,11 +382,20 @@ export async function getAnalyticsData() {
   const revenues = (revenuesResult.data ?? []) as MoneyRow[];
   const expenses = (expensesResult.data ?? []) as ExpenseRow[];
   const newClients = clients.filter((client) => new Date(client.created_at) >= thirtyDaysAgo).length;
-  const repeatClientsRate = clients.length
-    ? Math.round((clients.filter((client) => client.visits_count > 1).length / clients.length) * 100)
+  const appointmentsForClientMetrics = appointments.filter((appointment) => appointment.status !== "cancelled");
+  const appointmentCountsByClient = new Map<string, number>();
+  for (const appointment of appointmentsForClientMetrics) {
+    appointmentCountsByClient.set(appointment.client_id, (appointmentCountsByClient.get(appointment.client_id) ?? 0) + 1);
+  }
+
+  // Repeat clients are based on actual appointments, not denormalized visits_count, which can lag behind writes.
+  const totalClientsWithAppointments = appointmentCountsByClient.size;
+  const repeatClients = Array.from(appointmentCountsByClient.values()).filter((appointmentCount) => appointmentCount >= 2).length;
+  const repeatClientsRate = totalClientsWithAppointments ? Math.round((repeatClients / totalClientsWithAppointments) * 100) : 0;
+  const completedAppointments = appointmentsForClientMetrics.filter((appointment) => appointment.status === "completed").length;
+  const bookingConversion = appointmentsForClientMetrics.length
+    ? Math.round((completedAppointments / appointmentsForClientMetrics.length) * 100)
     : 0;
-  const completedAppointments = appointments.filter((appointment) => appointment.status === "completed").length;
-  const bookingConversion = appointments.length ? Math.round((completedAppointments / appointments.length) * 100) : 0;
   const serviceRevenue = new Map<string, number>();
 
   for (const revenue of revenues) {
