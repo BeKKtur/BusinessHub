@@ -187,6 +187,7 @@ export function AdminManager() {
   const businesses = businessesQuery.data ?? [];
   const subscriptions = subscriptionsQuery.data ?? [];
   const activity = activityQuery.data ?? [];
+  const visibleActivity = activity.slice(0, 10);
 
   function changeManualGrant(user: AdminUser, grant: GrantOption) {
     const business = businessByOwnerId.get(user.id);
@@ -380,17 +381,22 @@ export function AdminManager() {
       </div>
 
       <Card className="mt-4">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Последние действия</CardTitle>
+          {activity.length > visibleActivity.length ? (
+            <span className="text-xs text-muted-foreground">Показаны 10 из {activity.length}</span>
+          ) : null}
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent>
           {activity.length ? (
-            activity.map((item) => (
-              <div key={item.id} className="rounded-lg border bg-background p-3 text-sm">
-                <div className="font-medium">{item.action}</div>
-                <div className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString("ru-RU")}</div>
-              </div>
-            ))
+            <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
+              {visibleActivity.map((item) => (
+                <div key={item.id} className="rounded-lg border bg-background p-3 text-sm">
+                  <div className="font-medium">{item.action}</div>
+                  <div className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString("ru-RU")}</div>
+                </div>
+              ))}
+            </div>
           ) : (
             <EmptyState icon={ShieldCheck} title="Логов пока нет" description="Admin-действия будут записываться в audit log." />
           )}
