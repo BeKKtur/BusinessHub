@@ -1,9 +1,34 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { ArrowRight, CalendarCheck, LineChart, Mail, Send, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export default function HomePage() {
+type HomePageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+const footerLinks = [
+  { href: "/pricing", label: "Pricing" },
+  { href: "/terms", label: "Terms" },
+  { href: "/privacy", label: "Privacy" },
+  { href: "/refund", label: "Refund" },
+  { href: "/contact", label: "Contact" }
+] as const;
+
+export default async function HomePage({ searchParams }: HomePageProps) {
+  const params = await searchParams;
+  const code = typeof params?.code === "string" ? params.code : null;
+  if (code) {
+    const callbackParams = new URLSearchParams();
+    Object.entries(params ?? {}).forEach(([key, value]) => {
+      if (typeof value === "string") {
+        callbackParams.set(key, value);
+      }
+    });
+    redirect(`/auth/callback?${callbackParams.toString()}`);
+  }
+
   return (
     <main className="min-h-screen bg-background">
       <section className="relative overflow-hidden border-b">
@@ -26,6 +51,11 @@ export default function HomePage() {
               <p className="mt-6 max-w-2xl text-lg text-muted-foreground">
                 Универсальная CRM-платформа для малого сервисного бизнеса: клиенты, записи, финансы, аналитика и
                 Telegram-напоминания в одном месте.
+              </p>
+              <p className="mt-4 max-w-2xl text-sm text-muted-foreground">
+                BusinessHub помогает салонам, барбершопам, автомойкам, СТО, репетиторам, фитнес-тренерам,
+                медицинским кабинетам и другим сервисным командам управлять клиентской базой, календарем записей,
+                доходами, расходами, аналитикой и напоминаниями клиентам.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button asChild size="lg">
@@ -69,6 +99,11 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-7xl flex-col gap-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
           <div>BusinessHub · Поддержка и вопросы по оплате</div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            {footerLinks.map((item) => (
+              <Link key={item.href} className="hover:text-foreground" href={item.href as Route}>
+                {item.label}
+              </Link>
+            ))}
             <a className="flex items-center gap-2 hover:text-foreground" href="mailto:batyrbekovbektur0@gmail.com">
               <Mail className="h-4 w-4" />
               batyrbekovbektur0@gmail.com
@@ -77,9 +112,6 @@ export default function HomePage() {
               <Send className="h-4 w-4" />
               @batyrbekovbektur0
             </a>
-            <Link className="hover:text-foreground" href={"/contact" as Route}>
-              Контакты
-            </Link>
           </div>
         </div>
       </footer>

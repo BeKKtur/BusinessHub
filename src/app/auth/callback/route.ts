@@ -25,8 +25,10 @@ export async function GET(request: NextRequest) {
   const cookiesToSet: CookieToSet[] = [];
   const code = request.nextUrl.searchParams.get("code");
   if (!code) {
+    console.error("[auth.callback.code]", { message: "OAuth callback did not include a code." });
     return redirectTo(request, "/login", { reason: "oauth" });
   }
+  console.info("[auth.callback.code]", { message: "OAuth callback received code." });
 
   const envStatus = getSupabasePublicEnvStatus();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -60,6 +62,7 @@ export async function GET(request: NextRequest) {
     console.error("[auth.callback.exchange]", { message: exchangeError.message });
     return redirectTo(request, "/login", { reason: "oauth" }, cookiesToSet);
   }
+  console.info("[auth.callback.exchange]", { message: "exchangeCodeForSession succeeded." });
 
   const {
     data: { user },
