@@ -40,6 +40,10 @@ export default function PricingPage() {
             BusinessHub is a CRM for service businesses that need clients, appointments, services, finance analytics
             and Telegram reminders in one workspace.
           </p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Payments are handled securely through Paddle. Paid subscriptions can be managed from the Billing page after
+            login, and the refund policy is available before purchase.
+          </p>
         </section>
 
         <section className="mt-8 grid gap-4 lg:grid-cols-3">
@@ -62,6 +66,12 @@ export default function PricingPage() {
             </Card>
           ))}
         </section>
+        <div className="mt-6 flex flex-wrap gap-4 text-sm text-muted-foreground">
+          <Link className="hover:text-foreground" href="/terms">Terms</Link>
+          <Link className="hover:text-foreground" href="/privacy">Privacy</Link>
+          <Link className="hover:text-foreground" href="/refund">Refund Policy</Link>
+          <Link className="hover:text-foreground" href="/contact">Contact support</Link>
+        </div>
       </div>
     </main>
   );

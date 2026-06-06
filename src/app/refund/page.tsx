@@ -15,6 +15,10 @@ export default function RefundPage() {
             contact support within 14 days of the charge.
           </p>
           <p>
+            Paddle securely processes subscription payments for BusinessHub. You can manage or cancel an active
+            subscription from the Billing page after logging in.
+          </p>
+          <p>
             Refund requests are reviewed individually. Approved refunds are processed through Paddle to the original
             payment method. Cancellation stops future renewals but does not automatically refund previous paid periods.
           </p>

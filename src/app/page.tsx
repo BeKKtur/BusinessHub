@@ -44,6 +44,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             <div className="text-sm font-semibold">BusinessHub</div>
             <div className="flex items-center gap-2">
               <Button asChild variant="ghost">
+                <Link href="/pricing">Pricing</Link>
+              </Button>
+              <Button asChild variant="ghost">
                 <Link href="/login">Войти</Link>
               </Button>
               <Button asChild>
@@ -62,6 +65,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 BusinessHub помогает салонам, барбершопам, автомойкам, СТО, репетиторам, фитнес-тренерам,
                 медицинским кабинетам и другим сервисным командам управлять клиентской базой, календарем записей,
                 доходами, расходами, аналитикой и напоминаниями клиентам.
+              </p>
+              <p className="mt-4 max-w-2xl text-sm text-muted-foreground">
+                Payments are handled securely through Paddle. Subscriptions can be managed from the Billing page, and
+                the refund policy is available publicly before purchase.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button asChild size="lg">

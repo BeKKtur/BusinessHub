@@ -26,6 +26,10 @@ export default function TermsPage() {
             updated terms.
           </p>
           <p>
+            Payments are handled securely through Paddle. Subscription upgrades, renewals, cancellations and billing
+            management are available from the Billing page inside your BusinessHub account.
+          </p>
+          <p>
             For support, billing questions, or legal requests, contact us at{" "}
             <a className="text-foreground underline" href="mailto:batyrbekovbektur0@gmail.com">
               batyrbekovbektur0@gmail.com
