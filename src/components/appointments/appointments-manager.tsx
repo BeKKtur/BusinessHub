@@ -655,25 +655,29 @@ export function AppointmentsManager() {
                   return (
                     <div
                       key={appointment.id}
-                      className="grid min-w-0 gap-3 rounded-lg border bg-background p-3 sm:grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start"
+                      className="grid min-w-0 gap-3 rounded-lg border bg-background p-3 md:grid-cols-[auto_minmax(0,1fr)_auto_auto] md:items-start"
                     >
-                      <div className="flex items-start">
+                      <div className="flex min-w-0 items-start">
                         <Badge className="w-fit shrink-0">
                           <Clock className="mr-1 h-3 w-3" />
                           {timeValue(appointment)}
                         </Badge>
                       </div>
-                      <div className="min-w-0 space-y-1">
-                        <div className="truncate text-sm font-semibold leading-5 text-foreground" title={clientName}>
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground" title={clientName}>
                           {clientName}
                         </div>
-                        <div className="truncate text-sm leading-5 text-foreground/90" title={serviceName}>
+                        <div className="min-w-0 truncate text-sm leading-5 text-foreground/90" title={serviceName}>
                           {serviceName}
                         </div>
-                        {serviceMeta ? <div className="text-xs font-medium leading-5 text-muted-foreground">{serviceMeta}</div> : null}
+                        {serviceMeta ? (
+                          <div className="max-w-full truncate whitespace-nowrap text-xs font-medium leading-5 text-muted-foreground" title={serviceMeta}>
+                            {serviceMeta}
+                          </div>
+                        ) : null}
                         {appointment.notes ? <div className="break-words text-xs leading-5 text-muted-foreground">{appointment.notes}</div> : null}
                       </div>
-                      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:col-start-2 lg:col-start-auto lg:justify-end">
+                      <div className="flex min-w-0 items-center md:justify-self-end">
                         <Badge
                           className={cn(
                             "shrink-0",
@@ -684,24 +688,26 @@ export function AppointmentsManager() {
                         >
                           {statusLabels[appointment.status]}
                         </Badge>
+                      </div>
+                      <div className="flex min-w-0 flex-nowrap items-center gap-1 md:justify-self-end">
                         {isScheduled ? (
                           <>
-                            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Завершить запись" disabled={isActionLoading} onClick={() => runAppointmentAction(appointment.id, "complete")}>
-                              {isActionLoading ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                            <Button variant="outline" size="icon" className="h-7 w-7" aria-label="Завершить запись" disabled={isActionLoading} onClick={() => runAppointmentAction(appointment.id, "complete")}>
+                              {isActionLoading ? <Clock className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
                             </Button>
-                            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Отменить запись" disabled={isActionLoading} onClick={() => runAppointmentAction(appointment.id, "cancel")}>
-                              {isActionLoading ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+                            <Button variant="outline" size="icon" className="h-7 w-7" aria-label="Отменить запись" disabled={isActionLoading} onClick={() => runAppointmentAction(appointment.id, "cancel")}>
+                              {isActionLoading ? <Clock className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
                             </Button>
-                            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Отметить неявку" disabled={isActionLoading} onClick={() => runAppointmentAction(appointment.id, "no_show")}>
-                              {isActionLoading ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <UserX className="h-3.5 w-3.5" />}
+                            <Button variant="outline" size="icon" className="h-7 w-7" aria-label="Отметить неявку" disabled={isActionLoading} onClick={() => runAppointmentAction(appointment.id, "no_show")}>
+                              {isActionLoading ? <Clock className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
                             </Button>
                           </>
                         ) : null}
-                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Редактировать запись" onClick={() => openEditForm(appointment)}>
-                          <Pencil className="h-3.5 w-3.5" />
+                        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Редактировать запись" onClick={() => openEditForm(appointment)}>
+                          <Pencil className="h-3 w-3" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Удалить запись" onClick={() => setDeleteTarget(appointment)}>
-                          <XCircle className="h-3.5 w-3.5" />
+                        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Удалить запись" onClick={() => setDeleteTarget(appointment)}>
+                          <XCircle className="h-3 w-3" />
                         </Button>
                       </div>
                     </div>
