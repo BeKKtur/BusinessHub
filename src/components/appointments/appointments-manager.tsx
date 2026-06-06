@@ -572,7 +572,7 @@ export function AppointmentsManager() {
         </Button>
       </div>
 
-      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.15fr)]">
+      <div className="grid min-w-0 gap-4">
         <Card className="h-fit min-w-0">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -592,7 +592,7 @@ export function AppointmentsManager() {
                   <button
                     key={dayKey}
                     className={cn(
-                      "relative flex min-h-10 items-center justify-center rounded-md border bg-background transition-colors hover:border-primary hover:bg-primary/10 sm:aspect-square",
+                      "relative flex min-h-10 items-center justify-center rounded-md border bg-background transition-colors hover:border-primary hover:bg-primary/10 sm:min-h-11",
                       isSelected && "border-primary bg-primary text-primary-foreground hover:bg-primary"
                     )}
                     onClick={() => {
@@ -655,7 +655,7 @@ export function AppointmentsManager() {
                   return (
                     <div
                       key={appointment.id}
-                      className="grid min-w-0 gap-3 rounded-lg border bg-background p-3 md:grid-cols-[auto_minmax(0,1fr)_auto_auto] md:items-start"
+                      className="grid min-w-0 gap-3 rounded-lg border bg-background p-4 md:grid-cols-[auto_minmax(0,1fr)_auto_auto] md:items-start"
                     >
                       <div className="flex min-w-0 items-start">
                         <Badge className="w-fit shrink-0">
@@ -663,15 +663,15 @@ export function AppointmentsManager() {
                           {timeValue(appointment)}
                         </Badge>
                       </div>
-                      <div className="min-w-0 space-y-0.5">
-                        <div className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground" title={clientName}>
+                      <div className="min-w-0 space-y-1">
+                        <div className="min-w-0 break-words text-sm font-semibold leading-5 text-foreground" title={clientName}>
                           {clientName}
                         </div>
-                        <div className="min-w-0 truncate text-sm leading-5 text-foreground/90" title={serviceName}>
+                        <div className="min-w-0 break-words text-sm leading-5 text-foreground/90" title={serviceName}>
                           {serviceName}
                         </div>
                         {serviceMeta ? (
-                          <div className="max-w-full truncate whitespace-nowrap text-xs font-medium leading-5 text-muted-foreground" title={serviceMeta}>
+                          <div className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs font-medium leading-5 text-muted-foreground" title={serviceMeta}>
                             {serviceMeta}
                           </div>
                         ) : null}
