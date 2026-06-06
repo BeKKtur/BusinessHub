@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CalendarDays, Check, CheckCircle2, ChevronsUpDown, Clock, Pencil, Plus, Save, UserPlus, UserX, X, XCircle } from "lucide-react";
+import { Ban, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, ChevronsUpDown, Clock, Pencil, Plus, Save, UserPlus, UserX, X, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -96,6 +96,14 @@ function buildMonthDays(selectedDate: string) {
   const month = date.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   return Array.from({ length: daysInMonth }, (_, index) => new Date(year, month, index + 1));
+}
+
+function shiftMonth(selectedDate: string, offset: number) {
+  const currentDate = new Date(`${selectedDate}T12:00:00`);
+  const targetMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1, 12, 0, 0, 0);
+  const lastDayOfTargetMonth = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0).getDate();
+  targetMonth.setDate(Math.min(currentDate.getDate(), lastDayOfTargetMonth));
+  return toDateKey(targetMonth);
 }
 
 function monthRange(selectedDate: string) {
@@ -541,7 +549,16 @@ export function AppointmentsManager() {
     actionMutation.mutate({ id, action });
   }
 
+  function moveCalendarMonth(offset: number) {
+    setSelectedDate((currentDate) => {
+      const nextDate = shiftMonth(currentDate, offset);
+      form.setValue("date", nextDate, { shouldValidate: true });
+      return nextDate;
+    });
+  }
+
   const monthDays = useMemo(() => buildMonthDays(selectedDate), [selectedDate]);
+  const todayKey = useMemo(() => toDateKey(new Date()), []);
   const selectedAppointments = useMemo(
     () =>
       appointments
@@ -552,6 +569,10 @@ export function AppointmentsManager() {
 
   const selectedDateLabel = new Date(`${selectedDate}T12:00:00`).toLocaleDateString("ru-RU", {
     day: "numeric",
+    month: "long",
+    year: "numeric"
+  });
+  const selectedMonthLabel = new Date(`${selectedDate}T12:00:00`).toLocaleDateString("ru-RU", {
     month: "long",
     year: "numeric"
   });
@@ -574,11 +595,22 @@ export function AppointmentsManager() {
 
       <div className="grid min-w-0 gap-4">
         <Card className="h-fit min-w-0">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-primary" />
-              Календарь
-            </CardTitle>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-primary" />
+                Календарь
+              </CardTitle>
+              <div className="mt-1 text-sm font-medium capitalize text-muted-foreground">{selectedMonthLabel}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="icon" onClick={() => moveCalendarMonth(-1)} aria-label="Предыдущий месяц">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button type="button" variant="outline" size="icon" onClick={() => moveCalendarMonth(1)} aria-label="Следующий месяц">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="mb-3 text-sm font-medium capitalize">{selectedDateLabel}</div>
@@ -586,6 +618,7 @@ export function AppointmentsManager() {
               {monthDays.map((day) => {
                 const dayKey = toDateKey(day);
                 const isSelected = dayKey === selectedDate;
+                const isToday = dayKey === todayKey;
                 const hasAppointments = appointments.some((appointment) => appointmentDateKey(appointment) === dayKey);
 
                 return (
@@ -593,6 +626,7 @@ export function AppointmentsManager() {
                     key={dayKey}
                     className={cn(
                       "relative flex min-h-10 items-center justify-center rounded-md border bg-background transition-colors hover:border-primary hover:bg-primary/10 sm:min-h-11",
+                      isToday && !isSelected && "border-primary/50 bg-primary/5 text-primary",
                       isSelected && "border-primary bg-primary text-primary-foreground hover:bg-primary"
                     )}
                     onClick={() => {
