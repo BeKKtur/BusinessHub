@@ -108,9 +108,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               <Mail className="h-4 w-4" />
               batyrbekovbektur0@gmail.com
             </a>
-            <a className="flex items-center gap-2 hover:text-foreground" href="https://t.me/batyrbekovbektur0">
+            <a className="flex items-center gap-2 hover:text-foreground" href="https://t.me/JustTriple_B">
               <Send className="h-4 w-4" />
-              @batyrbekovbektur0
+              Telegram: @JustTriple_B
             </a>
           </div>
         </div>

@@ -21,6 +21,14 @@ npm run dev
 
 Open http://localhost:3000.
 
+If port 3000 is occupied, stop the old local process and start again:
+
+```bash
+lsof -i :3000
+kill -9 <PID>
+npm run dev
+```
+
 ## Environment
 
 Configure `.env.local`. A placeholder file is included for local setup; replace every `your-*` value before using real integrations:
@@ -150,9 +158,10 @@ GitHub Actions workflow runs:
 
 1. Import the repository in Vercel.
 2. Add all environment variables.
-3. Set Supabase auth redirect URLs:
-   - `https://your-domain.com/login`
-   - `https://your-domain.com/onboarding`
+3. In Supabase `Authentication -> URL Configuration`, set:
+   - Site URL: `https://business-m4txpegfz-bekturs-projects-77a024a5.vercel.app`
+   - Redirect URL: `https://business-m4txpegfz-bekturs-projects-77a024a5.vercel.app/auth/callback`
+   - Redirect URL: `http://localhost:3000/auth/callback`
 4. Deploy.
 
 ## Scripts

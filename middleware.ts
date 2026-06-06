@@ -25,6 +25,12 @@ export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
   const e2eAuthBypass = process.env.E2E_AUTH_BYPASS === "true" && request.headers.get("x-businesshub-e2e-auth") === "1";
 
+  if (request.nextUrl.pathname === "/" && request.nextUrl.searchParams.has("code")) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/auth/callback";
+    return NextResponse.redirect(redirectUrl);
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const isProtected = protectedRoutes.some(

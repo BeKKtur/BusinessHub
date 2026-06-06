@@ -29,6 +29,8 @@ export function LoginForm() {
   const [error, setError] = useState<string | null>(
     searchParams.get("reason") === "supabase"
       ? "Supabase не настроен. Заполните .env.local реальными ключами."
+      : searchParams.get("error") === "oauth_callback_failed"
+        ? "Не удалось завершить вход через Google. Проверьте настройки OAuth и попробуйте снова."
       : searchParams.get("reason") === "oauth"
         ? "Не удалось завершить вход через Google. Проверьте настройки OAuth и попробуйте снова."
         : searchParams.get("reason") === "oauth_existing"

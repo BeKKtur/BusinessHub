@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   if (!code) {
     console.error("[auth.callback.code]", { message: "OAuth callback did not include a code." });
-    return redirectTo(request, "/login", { reason: "oauth" });
+    return redirectTo(request, "/login", { error: "oauth_callback_failed" });
   }
   console.info("[auth.callback.code]", { message: "OAuth callback received code." });
 
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       placeholderEnv: envStatus.placeholderEnv,
       invalidEnv: envStatus.invalidEnv
     });
-    return redirectTo(request, "/login", { reason: "supabase" });
+    return redirectTo(request, "/login", { reason: "supabase", error: "oauth_callback_failed" });
   }
 
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
   const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
   if (exchangeError) {
     console.error("[auth.callback.exchange]", { message: exchangeError.message });
-    return redirectTo(request, "/login", { reason: "oauth" }, cookiesToSet);
+    return redirectTo(request, "/login", { error: "oauth_callback_failed" }, cookiesToSet);
   }
   console.info("[auth.callback.exchange]", { message: "exchangeCodeForSession succeeded." });
 
@@ -71,14 +71,14 @@ export async function GET(request: NextRequest) {
 
   if (userError || !user) {
     console.error("[auth.callback.user]", { message: userError?.message ?? "User not found after OAuth callback" });
-    return redirectTo(request, "/login", { reason: "oauth" }, cookiesToSet);
+    return redirectTo(request, "/login", { error: "oauth_callback_failed" }, cookiesToSet);
   }
 
   const admin = createAdminClient();
   const email = user.email?.trim().toLowerCase();
   if (!email) {
     console.error("[auth.callback.email]", { message: "OAuth user email is missing" });
-    return redirectTo(request, "/login", { reason: "oauth" }, cookiesToSet);
+    return redirectTo(request, "/login", { error: "oauth_callback_failed" }, cookiesToSet);
   }
 
   const { data: existingProfile, error: existingProfileError } = await admin
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
 
   if (existingProfileError) {
     console.error("[auth.callback.profileLookup]", { message: existingProfileError.message });
-    return redirectTo(request, "/login", { reason: "oauth" }, cookiesToSet);
+    return redirectTo(request, "/login", { error: "oauth_callback_failed" }, cookiesToSet);
   }
 
   if (existingProfile && existingProfile.id !== user.id) {

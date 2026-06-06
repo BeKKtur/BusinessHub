@@ -21,9 +21,9 @@ export default function ContactPage() {
                 <Mail className="h-4 w-4 text-primary" />
                 batyrbekovbektur0@gmail.com
               </a>
-              <a className="flex items-center gap-3 rounded-lg border bg-background p-4 text-foreground" href="https://t.me/batyrbekovbektur0">
+              <a className="flex items-center gap-3 rounded-lg border bg-background p-4 text-foreground" href="https://t.me/JustTriple_B">
                 <Send className="h-4 w-4 text-primary" />
-                @batyrbekovbektur0
+                Telegram: @JustTriple_B
               </a>
             </div>
           </CardContent>
