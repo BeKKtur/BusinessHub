@@ -5,11 +5,48 @@ import { getSupabasePublicEnvStatus } from "@/lib/env";
 import { ensureUserWorkspace } from "@/lib/server/auth-provisioning";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+export const dynamic = "force-dynamic";
+
 type CookieToSet = {
   name: string;
   value: string;
   options: CookieOptions;
 };
+
+function safeAuthError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return { message: error instanceof Error ? error.message : "Unknown auth error" };
+  }
+
+  const maybeError = error as {
+    name?: string;
+    message?: string;
+    status?: number | string;
+    code?: string;
+    error?: string;
+    error_code?: string;
+    error_description?: string;
+  };
+
+  return {
+    name: maybeError.name,
+    message: maybeError.message,
+    status: maybeError.status,
+    code: maybeError.code ?? maybeError.error_code ?? maybeError.error,
+    errorDescription: maybeError.error_description
+  };
+}
+
+function safeRequestContext(request: NextRequest) {
+  return {
+    url: `${request.nextUrl.origin}${request.nextUrl.pathname}`,
+    searchParams: Array.from(request.nextUrl.searchParams.keys()),
+    hasCode: request.nextUrl.searchParams.has("code"),
+    hasError: request.nextUrl.searchParams.has("error"),
+    error: request.nextUrl.searchParams.get("error"),
+    errorDescription: request.nextUrl.searchParams.get("error_description")
+  };
+}
 
 function redirectTo(request: NextRequest, pathname: string, params?: Record<string, string>, cookiesToSet: CookieToSet[] = []) {
   const url = request.nextUrl.clone();
@@ -23,12 +60,23 @@ function redirectTo(request: NextRequest, pathname: string, params?: Record<stri
 
 export async function GET(request: NextRequest) {
   const cookiesToSet: CookieToSet[] = [];
-  const code = request.nextUrl.searchParams.get("code");
-  if (!code) {
-    console.error("[auth.callback.code]", { message: "OAuth callback did not include a code." });
+  console.info("[auth.callback.received]", safeRequestContext(request));
+
+  const callbackError = request.nextUrl.searchParams.get("error");
+  if (callbackError) {
+    console.error("[auth.callback.providerError]", {
+      error: callbackError,
+      errorDescription: request.nextUrl.searchParams.get("error_description")
+    });
     return redirectTo(request, "/login", { error: "oauth_callback_failed" });
   }
-  console.info("[auth.callback.code]", { message: "OAuth callback received code." });
+
+  const code = request.nextUrl.searchParams.get("code");
+  if (!code) {
+    console.error("[auth.callback.code]", { message: "OAuth callback did not include a code.", ...safeRequestContext(request) });
+    return redirectTo(request, "/login", { error: "oauth_callback_failed" });
+  }
+  console.info("[auth.callback.code]", { message: "OAuth callback received code.", hasCode: true });
 
   const envStatus = getSupabasePublicEnvStatus();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -38,17 +86,36 @@ export async function GET(request: NextRequest) {
     console.error("[auth.callback.env]", {
       missingEnv: envStatus.missingEnv,
       placeholderEnv: envStatus.placeholderEnv,
-      invalidEnv: envStatus.invalidEnv
+      invalidEnv: envStatus.invalidEnv,
+      supabaseUrlOrigin: supabaseUrl ? new URL(supabaseUrl).origin : null,
+      hasAnonKey: Boolean(supabaseKey)
     });
     return redirectTo(request, "/login", { reason: "supabase", error: "oauth_callback_failed" });
   }
 
+  console.info("[auth.callback.env]", {
+    supabaseUrlOrigin: new URL(supabaseUrl).origin,
+    hasAnonKey: Boolean(supabaseKey),
+    missingEnv: envStatus.missingEnv,
+    placeholderEnv: envStatus.placeholderEnv,
+    invalidEnv: envStatus.invalidEnv
+  });
+
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
     cookies: {
       getAll() {
-        return request.cookies.getAll();
+        const cookies = request.cookies.getAll();
+        console.info("[auth.callback.cookies.read]", {
+          count: cookies.length,
+          hasCodeVerifierCookie: cookies.some((cookie) => cookie.name.endsWith("-code-verifier"))
+        });
+        return cookies;
       },
       setAll(newCookies: CookieToSet[]) {
+        console.info("[auth.callback.cookies.set]", {
+          count: newCookies.length,
+          names: newCookies.map((cookie) => cookie.name)
+        });
         newCookies.forEach((cookie) => {
           request.cookies.set(cookie.name, cookie.value);
           cookiesToSet.push(cookie);
@@ -57,12 +124,25 @@ export async function GET(request: NextRequest) {
     }
   });
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+  const exchangeResult = await supabase.auth.exchangeCodeForSession(code).catch((error: unknown) => ({
+    data: { session: null, user: null },
+    error
+  }));
+  const { data: exchangeData, error: exchangeError } = exchangeResult;
   if (exchangeError) {
-    console.error("[auth.callback.exchange]", { message: exchangeError.message });
+    console.error("[auth.callback.exchange]", {
+      ok: false,
+      error: safeAuthError(exchangeError),
+      cookiesToSet: cookiesToSet.map((cookie) => cookie.name)
+    });
     return redirectTo(request, "/login", { error: "oauth_callback_failed" }, cookiesToSet);
   }
-  console.info("[auth.callback.exchange]", { message: "exchangeCodeForSession succeeded." });
+  console.info("[auth.callback.exchange]", {
+    ok: true,
+    hasSession: Boolean(exchangeData.session),
+    hasUser: Boolean(exchangeData.user),
+    cookiesToSet: cookiesToSet.map((cookie) => cookie.name)
+  });
 
   const {
     data: { user },
@@ -70,9 +150,13 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    console.error("[auth.callback.user]", { message: userError?.message ?? "User not found after OAuth callback" });
+    console.error("[auth.callback.user]", {
+      ok: false,
+      error: userError ? safeAuthError(userError) : { message: "User not found after OAuth callback" }
+    });
     return redirectTo(request, "/login", { error: "oauth_callback_failed" }, cookiesToSet);
   }
+  console.info("[auth.callback.user]", { ok: true, userId: user.id, hasEmail: Boolean(user.email) });
 
   const admin = createAdminClient();
   const email = user.email?.trim().toLowerCase();
