@@ -35,6 +35,7 @@ Configure `.env.local`. A placeholder file is included for local setup; replace 
 
 ```bash
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
@@ -159,8 +160,8 @@ GitHub Actions workflow runs:
 1. Import the repository in Vercel.
 2. Add all environment variables.
 3. In Supabase `Authentication -> URL Configuration`, set:
-   - Site URL: `https://business-m4txpegfz-bekturs-projects-77a024a5.vercel.app`
-   - Redirect URL: `https://business-m4txpegfz-bekturs-projects-77a024a5.vercel.app/auth/callback`
+   - Site URL: `https://business-8akqvzyub-bekturs-projects-77a024a5.vercel.app`
+   - Redirect URL: `https://business-8akqvzyub-bekturs-projects-77a024a5.vercel.app/auth/callback`
    - Redirect URL: `http://localhost:3000/auth/callback`
 4. Deploy.
 

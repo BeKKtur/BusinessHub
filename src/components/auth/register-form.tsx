@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getClientSiteUrl } from "@/lib/site-url";
 import { createClient } from "@/lib/supabase/client";
 
 const registerSchema = z.object({
@@ -65,10 +66,12 @@ export function RegisterForm() {
     setGoogleLoading(true);
     try {
       const supabase = createClient();
+      const redirectTo = `${getClientSiteUrl()}/auth/callback`;
+      console.log("Google OAuth redirectTo", redirectTo);
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo,
           skipBrowserRedirect: true
         }
       });
