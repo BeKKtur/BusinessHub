@@ -3,7 +3,7 @@ import { apiError, getSupabaseEnvStatus, parseJson, supabaseConfigErrorResponse 
 import { enforcePlanLimit } from "@/lib/server/billing";
 import { createClient } from "@/lib/supabase/server";
 import { appointmentDeleteSchema, appointmentSchema, appointmentStatusActionSchema, appointmentUpdateSchema } from "@/lib/validators";
-import type { Appointment, AppointmentStatus, Revenue } from "@/types/database";
+import type { Appointment, AppointmentStatus, Client, Revenue, Service } from "@/types/database";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type QueryError = { message: string };
@@ -15,6 +15,12 @@ type ServiceStatusRow = { id: string; active: boolean; name?: string; price?: nu
 type ClientExistsRow = { id: string };
 type AppointmentDetailsRow = Appointment;
 type RevenueInsert = Omit<Revenue, "id" | "created_at">;
+type AppointmentClientDetails = Pick<Client, "id" | "name" | "phone" | "email">;
+type AppointmentServiceDetails = Pick<Service, "id" | "name" | "price" | "duration_minutes">;
+type AppointmentWithDetails = Appointment & {
+  client: AppointmentClientDetails | null;
+  service: AppointmentServiceDetails | null;
+};
 
 type BusinessesTable = {
   select: (columns: string) => {
@@ -114,6 +120,22 @@ type ClientsStatusTable = {
   };
 };
 
+type ClientsLookupTable = {
+  select: (columns: string) => {
+    eq: (column: "business_id", value: string) => {
+      in: (column: "id", values: string[]) => Promise<QueryResult<AppointmentClientDetails[]>>;
+    };
+  };
+};
+
+type ServicesLookupTable = {
+  select: (columns: string) => {
+    eq: (column: "business_id", value: string) => {
+      in: (column: "id", values: string[]) => Promise<QueryResult<AppointmentServiceDetails[]>>;
+    };
+  };
+};
+
 function businessesTable(supabase: SupabaseServerClient) {
   return supabase.from("businesses") as unknown as BusinessesTable;
 }
@@ -140,6 +162,14 @@ function revenuesTable(supabase: SupabaseServerClient) {
 
 function clientsStatusTable(supabase: SupabaseServerClient) {
   return supabase.from("clients") as unknown as ClientsStatusTable;
+}
+
+function clientsLookupTable(supabase: SupabaseServerClient) {
+  return supabase.from("clients") as unknown as ClientsLookupTable;
+}
+
+function servicesLookupTable(supabase: SupabaseServerClient) {
+  return supabase.from("services") as unknown as ServicesLookupTable;
 }
 
 function isMissingRevenueAppointmentLink(error: QueryError) {
@@ -231,6 +261,46 @@ async function ensureClientExists(context: { supabase: SupabaseServerClient; bus
   return null;
 }
 
+async function hydrateAppointments(
+  context: { supabase: SupabaseServerClient; businessId: string },
+  appointments: Appointment[]
+): Promise<AppointmentWithDetails[]> {
+  const clientIds = Array.from(new Set(appointments.map((appointment) => appointment.client_id).filter(Boolean)));
+  const serviceIds = Array.from(new Set(appointments.map((appointment) => appointment.service_id).filter(Boolean)));
+
+  const [clientsResult, servicesResult] = await Promise.all([
+    clientIds.length
+      ? clientsLookupTable(context.supabase)
+          .select("id, name, phone, email")
+          .eq("business_id", context.businessId)
+          .in("id", clientIds)
+      : Promise.resolve({ data: [], error: null } as QueryResult<AppointmentClientDetails[]>),
+    serviceIds.length
+      ? servicesLookupTable(context.supabase)
+          .select("id, name, price, duration_minutes")
+          .eq("business_id", context.businessId)
+          .in("id", serviceIds)
+      : Promise.resolve({ data: [], error: null } as QueryResult<AppointmentServiceDetails[]>)
+  ]);
+
+  if (clientsResult.error) {
+    console.error("[appointments.hydrate.clients]", { message: clientsResult.error.message });
+  }
+
+  if (servicesResult.error) {
+    console.error("[appointments.hydrate.services]", { message: servicesResult.error.message });
+  }
+
+  const clientsById = new Map((clientsResult.data ?? []).map((client) => [client.id, client]));
+  const servicesById = new Map((servicesResult.data ?? []).map((service) => [service.id, service]));
+
+  return appointments.map((appointment) => ({
+    ...appointment,
+    client: clientsById.get(appointment.client_id) ?? null,
+    service: servicesById.get(appointment.service_id) ?? null
+  }));
+}
+
 async function ensureTimeAvailable(
   context: { supabase: SupabaseServerClient; businessId: string },
   startsAt: string,
@@ -274,7 +344,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Failed to load appointments" }, { status: 500 });
   }
 
-  return NextResponse.json({ data, meta: { source: "supabase" } });
+  const hydratedAppointments = await hydrateAppointments(context, data ?? []);
+  return NextResponse.json({ data: hydratedAppointments, meta: { source: "supabase" } });
 }
 
 export async function POST(request: Request) {
@@ -311,7 +382,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to create appointment" }, { status: 500 });
     }
 
-    return NextResponse.json({ data, meta: { source: "supabase" } }, { status: 201 });
+    const [hydratedAppointment] = await hydrateAppointments(context, data ? [data] : []);
+    return NextResponse.json({ data: hydratedAppointment ?? data, meta: { source: "supabase" } }, { status: 201 });
   } catch (error) {
     return apiError(error);
   }
@@ -362,7 +434,8 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Failed to update appointment" }, { status: 500 });
     }
 
-    return NextResponse.json({ data, meta: { source: "supabase" } });
+    const [hydratedAppointment] = await hydrateAppointments(context, data ? [data] : []);
+    return NextResponse.json({ data: hydratedAppointment ?? data, meta: { source: "supabase" } });
   } catch (error) {
     return apiError(error);
   }
@@ -428,7 +501,8 @@ async function updateAppointmentStatus(
   }
 
   if (action !== "complete") {
-    return NextResponse.json({ data: updatedAppointment, meta: { source: "supabase" } });
+    const [hydratedAppointment] = await hydrateAppointments(context, [updatedAppointment]);
+    return NextResponse.json({ data: hydratedAppointment ?? updatedAppointment, meta: { source: "supabase" } });
   }
 
   const serviceResult = await getServiceForRevenue(context, updatedAppointment.service_id);
@@ -455,7 +529,8 @@ async function updateAppointmentStatus(
     return NextResponse.json({ error: "Failed to create appointment revenue" }, { status: 500 });
   }
 
-  return NextResponse.json({ data: updatedAppointment, revenue, meta: { source: "supabase" } });
+  const [hydratedAppointment] = await hydrateAppointments(context, [updatedAppointment]);
+  return NextResponse.json({ data: hydratedAppointment ?? updatedAppointment, revenue, meta: { source: "supabase" } });
 }
 
 export async function DELETE(request: Request) {

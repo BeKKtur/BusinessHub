@@ -35,6 +35,11 @@ type AppointmentFormState = {
   notes?: string;
 };
 
+type AppointmentWithDetails = Appointment & {
+  client?: Pick<Client, "id" | "name" | "phone" | "email"> | null;
+  service?: Pick<Service, "id" | "name" | "price" | "duration_minutes"> | null;
+};
+
 const appointmentFormSchema = z.object({
   client_id: z.string().trim().min(1, "Выберите клиента."),
   service_id: z.string().trim().min(1, "Выберите активную услугу."),
@@ -75,6 +80,14 @@ function appointmentDateKey(appointment: Appointment) {
 function timeValue(appointment: Appointment) {
   const date = new Date(appointment.starts_at);
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(value);
 }
 
 function buildMonthDays(selectedDate: string) {
@@ -122,12 +135,12 @@ async function fetchAppointments(from: string, to: string) {
     throw new Error(formatApiError(payload, "Failed to load appointments"));
   }
 
-  const payload = (await response.json()) as { data: Appointment[] };
+  const payload = (await response.json()) as { data: AppointmentWithDetails[] };
   return payload.data;
 }
 
 async function fetchClients() {
-  const response = await fetch("/api/clients");
+  const response = await fetch("/api/clients?limit=200");
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as Parameters<typeof formatApiError>[0];
     throw new Error(formatApiError(payload, "Failed to load clients"));
@@ -185,7 +198,7 @@ async function saveAppointment(payload: AppointmentPayload, id?: string) {
     throw new Error(payloadError?.error ?? "Failed to save appointment");
   }
 
-  return ((await response.json()) as { data: Appointment }).data;
+  return ((await response.json()) as { data: AppointmentWithDetails }).data;
 }
 
 async function deleteAppointment(id: string) {
@@ -215,7 +228,7 @@ async function updateAppointmentAction(id: string, action: AppointmentAction) {
     throw new Error(payloadError?.error ?? "Failed to update appointment status");
   }
 
-  return ((await response.json()) as { data: Appointment }).data;
+  return ((await response.json()) as { data: AppointmentWithDetails }).data;
 }
 
 function buildPayload(form: AppointmentFormState, services: Service[]): AppointmentPayload {
@@ -406,7 +419,7 @@ export function AppointmentsManager() {
   const saveMutation = useMutation({
     mutationFn: async (values: AppointmentFormState) => saveAppointment(buildPayload(values, services), editingAppointment?.id),
     onSuccess: (savedAppointment) => {
-      queryClient.setQueryData<Appointment[]>(["appointments", selectedMonth.key], (current = []) => {
+      queryClient.setQueryData<AppointmentWithDetails[]>(["appointments", selectedMonth.key], (current = []) => {
         const exists = current.some((item) => item.id === savedAppointment.id);
         return exists
           ? current.map((item) => (item.id === savedAppointment.id ? savedAppointment : item))
@@ -444,7 +457,7 @@ export function AppointmentsManager() {
   const deleteMutation = useMutation({
     mutationFn: deleteAppointment,
     onSuccess: (deletedId) => {
-      queryClient.setQueryData<Appointment[]>(["appointments", selectedMonth.key], (current = []) =>
+      queryClient.setQueryData<AppointmentWithDetails[]>(["appointments", selectedMonth.key], (current = []) =>
         current.filter((item) => item.id !== deletedId)
       );
       setDeleteTarget(undefined);
@@ -458,7 +471,7 @@ export function AppointmentsManager() {
   const actionMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: AppointmentAction }) => updateAppointmentAction(id, action),
     onSuccess: (updatedAppointment) => {
-      queryClient.setQueryData<Appointment[]>(["appointments", selectedMonth.key], (current = []) =>
+      queryClient.setQueryData<AppointmentWithDetails[]>(["appointments", selectedMonth.key], (current = []) =>
         current.map((item) => (item.id === updatedAppointment.id ? updatedAppointment : item))
       );
       void queryClient.invalidateQueries({ queryKey: ["appointments", selectedMonth.key] });
@@ -629,8 +642,16 @@ export function AppointmentsManager() {
                 {selectedAppointments.map((appointment) => {
                   const isScheduled = appointment.status === "scheduled";
                   const isActionLoading = actionMutation.isPending && actionTargetId === appointment.id;
-                  const clientName = clients.find((client) => client.id === appointment.client_id)?.name ?? "Клиент";
-                  const serviceName = services.find((service) => service.id === appointment.service_id)?.name ?? "Услуга";
+                  const clientDetails = appointment.client ?? clients.find((client) => client.id === appointment.client_id) ?? null;
+                  const serviceDetails = appointment.service ?? services.find((service) => service.id === appointment.service_id) ?? null;
+                  const clientName = clientDetails?.name ?? "Клиент не найден";
+                  const clientContact = clientDetails?.phone || clientDetails?.email || "";
+                  const serviceName = serviceDetails?.name ?? "Услуга не найдена";
+                  const serviceMeta = serviceDetails
+                    ? [Number.isFinite(serviceDetails.price) ? formatMoney(Number(serviceDetails.price)) : null, serviceDetails.duration_minutes ? `${serviceDetails.duration_minutes} мин` : null]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : "";
 
                   return (
                     <div key={appointment.id} className="grid min-w-0 gap-3 rounded-lg border bg-background p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
@@ -642,9 +663,14 @@ export function AppointmentsManager() {
                         <div className="truncate text-sm font-medium" title={clientName}>
                           {clientName}
                         </div>
-                        <div className="truncate text-xs text-muted-foreground" title={serviceName}>
-                          {serviceName}
+                        <div className="truncate text-xs text-muted-foreground" title={clientContact || undefined}>
+                          {clientContact || "Контакт не указан"}
                         </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">{serviceName}</span>
+                          {serviceMeta ? <span> · {serviceMeta}</span> : null}
+                        </div>
+                        {appointment.notes ? <div className="mt-1 break-words text-xs text-muted-foreground">{appointment.notes}</div> : null}
                       </div>
                       <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
                         <Badge
