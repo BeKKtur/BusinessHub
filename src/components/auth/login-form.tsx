@@ -54,16 +54,28 @@ export function LoginForm() {
 
   async function onGoogleLogin() {
     setError(null);
-    const supabase = createClient();
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`
-      }
-    });
+    try {
+      const supabase = createClient();
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
 
-    if (oauthError) {
-      setError(oauthError.message);
+      if (oauthError) {
+        setError(oauthError.message);
+        return;
+      }
+
+      if (data.url) {
+        window.location.assign(data.url);
+        return;
+      }
+
+      setError("Не удалось открыть Google OAuth.");
+    } catch (oauthError) {
+      setError(oauthError instanceof Error ? oauthError.message : "Не удалось открыть Google OAuth.");
     }
   }
 
