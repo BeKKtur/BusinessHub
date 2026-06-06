@@ -12,7 +12,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "db:migrate": "npx supabase db push",
-    "db:seed": "npx supabase db reset",
+    "db:seed": "node scripts/seed.mjs",
     "format": "prettier --write .",
     "prepare": "husky"
   },

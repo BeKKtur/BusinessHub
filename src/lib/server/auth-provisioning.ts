@@ -10,6 +10,8 @@ type ProvisionInput = {
   businessType?: string | null;
 };
 
+const PROTECTED_SUPER_ADMIN_EMAIL = "batyrbekovbektur0@gmail.com";
+
 export async function findAuthUserByEmail(admin: SupabaseAdmin, email: string) {
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -37,6 +39,7 @@ export async function ensureUserWorkspace(admin: SupabaseAdmin, input: Provision
   if (!email) {
     throw new Error("Auth user email is missing");
   }
+  const shouldForceSuperAdmin = email === PROTECTED_SUPER_ADMIN_EMAIL;
 
   const metadataName =
     typeof input.user.user_metadata?.full_name === "string"
@@ -46,18 +49,40 @@ export async function ensureUserWorkspace(admin: SupabaseAdmin, input: Provision
         : null;
   const fullName = input.fullName?.trim() || metadataName || email.split("@")[0] || "BusinessHub User";
 
-  const { error: profileError } = await admin.from("profiles").upsert(
-    {
+  const { data: existingProfile, error: profileLookupError } = await admin
+    .from("profiles")
+    .select("id, email, full_name, role")
+    .eq("id", input.user.id)
+    .maybeSingle();
+
+  if (profileLookupError) {
+    throw profileLookupError;
+  }
+
+  if (existingProfile) {
+    const { error: profileError } = await admin
+      .from("profiles")
+      .update({
+        email: existingProfile.email || email,
+        full_name: existingProfile.full_name || fullName,
+        ...(shouldForceSuperAdmin ? { role: "super_admin" as const } : {})
+      })
+      .eq("id", input.user.id);
+
+    if (profileError) {
+      throw profileError;
+    }
+  } else {
+    const { error: profileError } = await admin.from("profiles").insert({
       id: input.user.id,
       email,
       full_name: fullName,
-      role: "user"
-    },
-    { onConflict: "id" }
-  );
+      role: shouldForceSuperAdmin ? "super_admin" : "user"
+    });
 
-  if (profileError) {
-    throw profileError;
+    if (profileError) {
+      throw profileError;
+    }
   }
 
   const { data: business, error: businessLookupError } = await admin

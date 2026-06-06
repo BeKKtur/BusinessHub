@@ -84,14 +84,16 @@ If you do not want to use the CLI, apply the schema manually:
 
 After the migration is applied, registration can create a Supabase Auth user, then insert the matching `profiles` and `businesses` rows.
 
-9. Create at least one user through the app or Supabase Auth. The seed script attaches demo data to the first profile.
+9. Create at least one user through the app or Supabase Auth. The seed script attaches demo data to the first non-admin profile and restores the protected super admin role when the owner account exists.
 10. Run seed data locally with:
 
 ```bash
 npm run db:seed
 ```
 
-For a remote/staging project, review `supabase/seed.sql` first and run it from the Supabase SQL editor after creating a test owner.
+`npm run db:seed` is non-destructive: it does not run `supabase db reset`, does not delete auth users, and does not delete profiles. Do not use `supabase db reset` against any shared or production project.
+
+For a remote/staging project, review `supabase/seed.sql` or `scripts/seed.mjs` first and run only against a test owner.
 Generate fresh DB types with Supabase CLI when schema changes.
 
 The migration creates:

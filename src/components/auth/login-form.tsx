@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatApiError } from "@/lib/api-client";
 import { getClientSiteUrl } from "@/lib/site-url";
-import { createClient } from "@/lib/supabase/client";
 
 const loginSchema = z.object({
   email: z.string().email("Введите корректный email"),
@@ -67,31 +66,11 @@ export function LoginForm() {
     setError(null);
     setGoogleLoading(true);
     try {
-      const supabase = createClient();
-      const redirectTo = `${getClientSiteUrl()}/auth/callback`;
-      console.log("Google OAuth redirectTo", redirectTo);
-      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo,
-          skipBrowserRedirect: true
-        }
-      });
-
-      if (oauthError) {
-        setError(oauthError.message);
-        return;
-      }
-
-      if (data.url) {
-        window.location.assign(data.url);
-        return;
-      }
-
-      setError("Не удалось открыть Google OAuth.");
+      const oauthStartUrl = `${getClientSiteUrl()}/auth/google`;
+      console.log("Google OAuth redirectTo", `${getClientSiteUrl()}/auth/callback`);
+      window.location.assign(oauthStartUrl);
     } catch (oauthError) {
       setError(oauthError instanceof Error ? oauthError.message : "Не удалось открыть Google OAuth.");
-    } finally {
       setGoogleLoading(false);
     }
   }

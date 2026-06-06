@@ -15,6 +15,8 @@ const registerSchema = z.object({
   businessType: z.string().trim().min(1).default("Другое")
 });
 
+const PROTECTED_SUPER_ADMIN_EMAIL = "batyrbekovbektur0@gmail.com";
+
 function isDuplicateAccountError(error: AuthError | null | undefined) {
   const message = error?.message.toLowerCase() ?? "";
   return message.includes("already") || message.includes("registered") || message.includes("exists") || message.includes("duplicate");
@@ -81,7 +83,9 @@ export async function POST(request: Request) {
     } catch (provisionError) {
       const message = provisionError instanceof Error ? provisionError.message : "Unknown provisioning error";
       console.error("[auth.register.provision]", { message });
-      await admin.auth.admin.deleteUser(userId);
+      if (payload.email.trim().toLowerCase() !== PROTECTED_SUPER_ADMIN_EMAIL) {
+        await admin.auth.admin.deleteUser(userId);
+      }
       createdUserId = null;
       return NextResponse.json({ error: publicSupabaseError("Не удалось подготовить рабочее пространство", message) }, { status: 500 });
     }
@@ -101,7 +105,10 @@ export async function POST(request: Request) {
   } catch (error) {
     if (createdUserId) {
       try {
-        await createAdminClient().auth.admin.deleteUser(createdUserId);
+        const protectedEmail = (await findAuthUserByEmail(createAdminClient(), PROTECTED_SUPER_ADMIN_EMAIL))?.id === createdUserId;
+        if (!protectedEmail) {
+          await createAdminClient().auth.admin.deleteUser(createdUserId);
+        }
       } catch (cleanupError) {
         console.error("[auth.register.cleanup]", { message: cleanupError instanceof Error ? cleanupError.message : "Unknown cleanup error" });
       }
