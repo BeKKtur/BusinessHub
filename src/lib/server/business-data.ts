@@ -32,13 +32,6 @@ export type FinanceRevenueItem = {
   amount: number;
 };
 
-export type LandingMetrics = {
-  todayAppointments: number;
-  newClientsThisMonth: number;
-  monthRevenue: number;
-  authenticated: boolean;
-};
-
 export type BusinessDataError = {
   error: string;
   status: number;
@@ -156,59 +149,6 @@ function getDateRange() {
     todayStart: todayStart.toISOString(),
     todayEnd: todayEnd.toISOString(),
     monthStart: monthStart.toISOString()
-  };
-}
-
-function landingMetricsFallback(authenticated = false): LandingMetrics {
-  return {
-    todayAppointments: 0,
-    newClientsThisMonth: 0,
-    monthRevenue: 0,
-    authenticated
-  };
-}
-
-export async function getLandingMetrics(): Promise<LandingMetrics> {
-  const { context, error } = await getBusinessContext();
-  if (error) {
-    return landingMetricsFallback(false);
-  }
-
-  if (context.e2e) {
-    return landingMetricsFallback(true);
-  }
-
-  const { todayStart, todayEnd, monthStart } = getDateRange();
-  const [appointmentsResult, clientsResult, revenuesResult] = await Promise.all([
-    context.supabase
-      .from("appointments")
-      .select("id", { count: "exact", head: true })
-      .eq("business_id", context.businessId)
-      .gte("starts_at", todayStart)
-      .lte("starts_at", todayEnd),
-    context.supabase
-      .from("clients")
-      .select("id", { count: "exact", head: true })
-      .eq("business_id", context.businessId)
-      .gte("created_at", monthStart),
-    context.supabase
-      .from("revenues")
-      .select("amount")
-      .eq("business_id", context.businessId)
-      .gte("occurred_at", monthStart)
-  ]);
-
-  const failed = [appointmentsResult, clientsResult, revenuesResult].find((result) => result.error);
-  if (failed?.error) {
-    console.error("[landing.metrics]", { message: failed.error.message });
-    return landingMetricsFallback(true);
-  }
-
-  return {
-    todayAppointments: appointmentsResult.count ?? 0,
-    newClientsThisMonth: clientsResult.count ?? 0,
-    monthRevenue: sumMoney((revenuesResult.data ?? []) as MoneyRow[]),
-    authenticated: true
   };
 }
 

@@ -3,8 +3,6 @@ import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { ArrowRight, CalendarCheck, LineChart, Mail, Send, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getLandingMetrics } from "@/lib/server/business-data";
-import { formatCurrency } from "@/lib/utils";
 
 type HomePageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -31,11 +29,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     redirect(`/auth/callback?${callbackParams.toString()}`);
   }
 
-  const metrics = await getLandingMetrics();
   const landingMetrics = [
-    { icon: CalendarCheck, label: "Сегодняшние записи", value: String(metrics.todayAppointments) },
-    { icon: Users, label: "Новые клиенты", value: String(metrics.newClientsThisMonth) },
-    { icon: LineChart, label: "Доход за месяц", value: formatCurrency(metrics.monthRevenue) }
+    { icon: CalendarCheck, label: "Сегодняшние записи", value: "12" },
+    { icon: Users, label: "Новые клиенты", value: "+18%" },
+    { icon: LineChart, label: "Доход за месяц", value: "$3,700" }
   ];
 
   return (
@@ -78,6 +75,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               </div>
             </div>
             <div className="rounded-lg border bg-card p-4 shadow-premium">
+              <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Пример аналитики</div>
               <div className="grid gap-3">
                 {landingMetrics.map((item, index) => (
                   <div key={`${item.label}-${index}`} className="flex items-center justify-between rounded-lg border bg-background p-4">
@@ -88,11 +86,6 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                     <span className="text-xl font-semibold">{item.value}</span>
                   </div>
                 ))}
-                {!metrics.authenticated ? (
-                  <div className="rounded-lg border border-dashed bg-background/60 p-3 text-xs text-muted-foreground">
-                    Войдите, чтобы увидеть реальные показатели своего бизнеса.
-                  </div>
-                ) : null}
               </div>
             </div>
           </div>
