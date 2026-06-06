@@ -43,6 +43,18 @@ function getNextBilledAt(data: JsonRecord) {
   return getString(data, "nextBilledAt", "next_billed_at") ?? getString(currentBillingPeriod, "endsAt", "ends_at") ?? getString(billingPeriod, "endsAt", "ends_at");
 }
 
+function getCurrentPeriodStart(data: JsonRecord) {
+  const currentBillingPeriod = asRecord(data.currentBillingPeriod ?? data.current_billing_period);
+  const billingPeriod = asRecord(data.billingPeriod ?? data.billing_period);
+  return getString(currentBillingPeriod, "startsAt", "starts_at") ?? getString(billingPeriod, "startsAt", "starts_at");
+}
+
+function getCurrentPeriodEnd(data: JsonRecord) {
+  const currentBillingPeriod = asRecord(data.currentBillingPeriod ?? data.current_billing_period);
+  const billingPeriod = asRecord(data.billingPeriod ?? data.billing_period);
+  return getString(currentBillingPeriod, "endsAt", "ends_at") ?? getString(billingPeriod, "endsAt", "ends_at") ?? getNextBilledAt(data);
+}
+
 function getTrialEndsAt(data: JsonRecord) {
   const trialDates = asRecord(data.trialDates ?? data.trial_dates);
   return getString(trialDates, "endsAt", "ends_at");
@@ -93,7 +105,7 @@ async function upsertSubscription(
 ) {
   const { data: existing, error: lookupError } = await admin
     .from("subscriptions")
-    .select("id")
+    .select("id, plan")
     .eq("business_id", businessId)
     .limit(1)
     .maybeSingle();
@@ -103,6 +115,7 @@ async function upsertSubscription(
   }
 
   const timestamp = new Date().toISOString();
+  const existingPlan = (existing as { plan?: SubscriptionPlan } | null)?.plan;
   const subscriptionUpdate = {
     plan: payload.plan,
     status: payload.status,
@@ -110,6 +123,8 @@ async function upsertSubscription(
     paddle_subscription_id: payload.paddle_subscription_id,
     paddle_customer_id: payload.paddle_customer_id,
     paddle_price_id: payload.paddle_price_id,
+    current_period_start: payload.current_period_start,
+    current_period_end: payload.current_period_end,
     next_billed_at: payload.next_billed_at,
     trial_ends_at: payload.trial_ends_at,
     cancelled_at: payload.cancelled_at,
@@ -132,6 +147,14 @@ async function upsertSubscription(
   if (error) {
     throw new Error(`Failed to save subscription: ${error.message}`);
   }
+
+  console.info("[billing.webhook.subscription.save]", {
+    businessId,
+    previousPlan: existingPlan ?? null,
+    plan: payload.plan,
+    status: payload.status,
+    paddleSubscriptionId: payload.paddle_subscription_id ?? null
+  });
 }
 
 async function handleSubscriptionEvent(eventType: string, data: JsonRecord) {
@@ -147,7 +170,25 @@ async function handleSubscriptionEvent(eventType: string, data: JsonRecord) {
   const priceId = getPriceId(data);
   const eventPlan = getPlanByPriceId(priceId);
   const status = eventType === "subscription.canceled" ? "canceled" : (getString(data, "status") ?? "active");
-  const plan: SubscriptionPlan = status === "canceled" ? "free" : eventPlan ?? "free";
+  const { data: currentSubscription } = await admin
+    .from("subscriptions")
+    .select("plan")
+    .eq("business_id", businessId)
+    .limit(1)
+    .maybeSingle();
+  const currentPlan = (currentSubscription as { plan?: SubscriptionPlan } | null)?.plan;
+  const plan: SubscriptionPlan = status === "canceled" ? "free" : eventPlan ?? currentPlan ?? "free";
+
+  if (!eventPlan && status !== "canceled") {
+    console.warn("[billing.webhook.subscription.plan]", {
+      eventType,
+      businessId,
+      priceId,
+      currentPlan: currentPlan ?? null,
+      selectedPlan: plan,
+      message: "Paddle event did not include a mapped price id. Preserving current plan."
+    });
+  }
 
   await upsertSubscription(admin, businessId, {
     business_id: businessId,
@@ -157,6 +198,8 @@ async function handleSubscriptionEvent(eventType: string, data: JsonRecord) {
     paddle_subscription_id: subscriptionId,
     paddle_customer_id: getCustomerId(data),
     paddle_price_id: priceId,
+    current_period_start: status === "canceled" ? null : getCurrentPeriodStart(data),
+    current_period_end: status === "canceled" ? null : getCurrentPeriodEnd(data),
     next_billed_at: status === "canceled" ? null : getNextBilledAt(data),
     trial_ends_at: getTrialEndsAt(data),
     cancelled_at: status === "canceled" ? new Date().toISOString() : null,

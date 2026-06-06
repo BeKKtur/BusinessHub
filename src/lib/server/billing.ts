@@ -10,6 +10,8 @@ export type BillingStatus = {
   paddle_subscription_id: string | null;
   paddle_customer_id: string | null;
   paddle_price_id: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
   next_billed_at: string | null;
   trial_ends_at: string | null;
   cancelled_at: string | null;
@@ -232,6 +234,8 @@ export function subscriptionDefaults(subscription?: Partial<BillingStatus> | nul
     paddle_subscription_id: subscription?.paddle_subscription_id ?? null,
     paddle_customer_id: subscription?.paddle_customer_id ?? null,
     paddle_price_id: subscription?.paddle_price_id ?? null,
+    current_period_start: subscription?.current_period_start ?? null,
+    current_period_end: subscription?.current_period_end ?? null,
     next_billed_at: subscription?.next_billed_at ?? null,
     trial_ends_at: subscription?.trial_ends_at ?? null,
     cancelled_at: subscription?.cancelled_at ?? null,
@@ -243,7 +247,7 @@ export async function getBusinessSubscription(supabase: SupabaseLike, businessId
   const table = supabase.from("subscriptions") as SubscriptionTable;
   const { data, error } = await table
     .select(
-      "plan, status, paddle_id, paddle_subscription_id, paddle_customer_id, paddle_price_id, next_billed_at, trial_ends_at, cancelled_at, portal_url"
+      "plan, status, paddle_id, paddle_subscription_id, paddle_customer_id, paddle_price_id, current_period_start, current_period_end, next_billed_at, trial_ends_at, cancelled_at, portal_url"
     )
     .eq("business_id", businessId)
     .limit(1)
@@ -254,7 +258,14 @@ export async function getBusinessSubscription(supabase: SupabaseLike, businessId
     throw new Error("Failed to load subscription status");
   }
 
-  return subscriptionDefaults(data as Partial<BillingStatus> | null);
+  const subscription = subscriptionDefaults(data as Partial<BillingStatus> | null);
+  console.info("[billing.subscription.read]", {
+    businessId,
+    plan: subscription.plan,
+    status: subscription.status,
+    hasPaddleSubscription: Boolean(subscription.paddle_subscription_id)
+  });
+  return subscription;
 }
 
 async function countRows(supabase: SupabaseLike, table: string, businessId: string) {

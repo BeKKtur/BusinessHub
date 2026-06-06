@@ -116,18 +116,43 @@ export async function ensureUserWorkspace(admin: SupabaseAdmin, input: Provision
     businessId = (createdBusiness as Database["public"]["Tables"]["businesses"]["Row"]).id;
   }
 
-  const { error: subscriptionError } = await admin.from("subscriptions").upsert(
-    {
-      business_id: businessId,
-      plan: "free",
-      status: "active"
-    },
-    { onConflict: "business_id" }
-  );
+  const { data: existingSubscription, error: subscriptionLookupError } = await admin
+    .from("subscriptions")
+    .select("id, plan, status")
+    .eq("business_id", businessId)
+    .limit(1)
+    .maybeSingle();
+
+  if (subscriptionLookupError) {
+    throw subscriptionLookupError;
+  }
+
+  if (existingSubscription) {
+    console.info("[auth.provision.subscription]", {
+      message: "Existing subscription preserved.",
+      businessId,
+      plan: existingSubscription.plan,
+      status: existingSubscription.status
+    });
+    return { profileId: input.user.id, businessId };
+  }
+
+  const { error: subscriptionError } = await admin.from("subscriptions").insert({
+    business_id: businessId,
+    plan: "free",
+    status: "active"
+  });
 
   if (subscriptionError) {
     throw subscriptionError;
   }
+
+  console.info("[auth.provision.subscription]", {
+    message: "Free subscription created for new workspace.",
+    businessId,
+    plan: "free",
+    status: "active"
+  });
 
   return { profileId: input.user.id, businessId };
 }

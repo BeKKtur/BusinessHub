@@ -105,6 +105,8 @@ export type Database = {
           paddle_subscription_id: string | null;
           paddle_customer_id: string | null;
           paddle_price_id: string | null;
+          current_period_start: string | null;
+          current_period_end: string | null;
           next_billed_at: string | null;
           trial_ends_at: string | null;
           cancelled_at: string | null;
@@ -121,6 +123,8 @@ export type Database = {
           paddle_subscription_id?: string | null;
           paddle_customer_id?: string | null;
           paddle_price_id?: string | null;
+          current_period_start?: string | null;
+          current_period_end?: string | null;
           next_billed_at?: string | null;
           trial_ends_at?: string | null;
           cancelled_at?: string | null;
@@ -135,6 +139,8 @@ export type Database = {
           paddle_subscription_id?: string | null;
           paddle_customer_id?: string | null;
           paddle_price_id?: string | null;
+          current_period_start?: string | null;
+          current_period_end?: string | null;
           next_billed_at?: string | null;
           trial_ends_at?: string | null;
           cancelled_at?: string | null;
