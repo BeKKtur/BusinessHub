@@ -18,7 +18,10 @@ function isMissingSubscriptionColumn(error: QueryError) {
   return /column .* does not exist|schema cache|Could not find.*column/i.test(error.message);
 }
 
-function resolveGrant(payload: { plan?: Plan; grant?: "free" | "pro_30" | "pro_90" | "business_30" | "business_90" | "business_forever" }) {
+function resolveGrant(payload: {
+  plan?: Plan;
+  grant?: "free" | "pro" | "business" | "pro_30" | "pro_90" | "business_30" | "business_90" | "business_forever";
+}) {
   const grant = payload.grant ?? payload.plan ?? "free";
   const now = new Date();
   const currentPeriodEnd = new Date(now);

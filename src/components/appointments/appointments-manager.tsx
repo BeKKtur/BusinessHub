@@ -301,77 +301,93 @@ function ClientCombobox({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="h-10 w-full justify-between px-3 font-normal"
-        >
-          <span className={cn("min-w-0 truncate text-left", !selectedClient && "text-muted-foreground")}>
-            {selectedClient ? `${selectedClient.name} · ${selectedClient.phone || selectedClient.email || "без контакта"}` : "Выберите клиента"}
-          </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0" align="start">
-        <Command shouldFilter={false}>
-          <CommandInput value={query} onValueChange={setQuery} placeholder="Поиск по имени, телефону или email" />
-          <CommandList>
-            {filteredClients.length ? (
-              <CommandGroup heading="Клиенты">
-                {filteredClients.map((client) => (
-                  <CommandItem
-                    key={client.id}
-                    value={`${client.name} ${client.phone} ${client.email ?? ""}`}
-                    onSelect={() => selectClient(client)}
-                    className="gap-2"
-                  >
-                    <Check className={cn("h-4 w-4 shrink-0", client.id === value ? "opacity-100" : "opacity-0")} />
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">{client.name}</div>
-                      <div className="truncate text-xs text-muted-foreground">{client.phone || client.email || "Контакт не указан"}</div>
-                    </div>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            ) : (
-              <CommandEmpty>Клиент не найден</CommandEmpty>
-            )}
-          </CommandList>
-          <div className="border-t p-3">
-            <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <UserPlus className="h-3.5 w-3.5" />
-              Создать нового клиента
+    <>
+      <select
+        id="client"
+        className="sr-only"
+        tabIndex={-1}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">Выберите клиента</option>
+        {clients.map((client) => (
+          <option key={client.id} value={client.id}>
+            {client.name}
+          </option>
+        ))}
+      </select>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="h-10 w-full justify-between px-3 font-normal"
+          >
+            <span className={cn("min-w-0 truncate text-left", !selectedClient && "text-muted-foreground")}>
+              {selectedClient ? `${selectedClient.name} · ${selectedClient.phone || selectedClient.email || "без контакта"}` : "Выберите клиента"}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0" align="start">
+          <Command shouldFilter={false}>
+            <CommandInput value={query} onValueChange={setQuery} placeholder="Поиск по имени, телефону или email" />
+            <CommandList>
+              {filteredClients.length ? (
+                <CommandGroup heading="Клиенты">
+                  {filteredClients.map((client) => (
+                    <CommandItem
+                      key={client.id}
+                      value={`${client.name} ${client.phone} ${client.email ?? ""}`}
+                      onSelect={() => selectClient(client)}
+                      className="gap-2"
+                    >
+                      <Check className={cn("h-4 w-4 shrink-0", client.id === value ? "opacity-100" : "opacity-0")} />
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{client.name}</div>
+                        <div className="truncate text-xs text-muted-foreground">{client.phone || client.email || "Контакт не указан"}</div>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              ) : (
+                <CommandEmpty>Клиент не найден</CommandEmpty>
+              )}
+            </CommandList>
+            <div className="border-t p-3">
+              <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <UserPlus className="h-3.5 w-3.5" />
+                Создать нового клиента
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Input
+                  value={quickName}
+                  onChange={(event) => setQuickName(event.target.value)}
+                  placeholder={query.trim() ? query.trim() : "Имя клиента"}
+                />
+                <Input value={quickPhone} onChange={(event) => setQuickPhone(event.target.value)} placeholder="Телефон" />
+              </div>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="w-full"
+                  disabled={creatingClient || !(quickName.trim() || query.trim()) || !quickPhone.trim()}
+                  onClick={submitQuickClient}
+                >
+                  {creatingClient ? "Создание..." : "Создать нового клиента"}
+                </Button>
+                <Button asChild type="button" size="sm" variant="outline" className="w-full">
+                  <Link href="/clients?new=1">Открыть клиентов</Link>
+                </Button>
+              </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input
-                value={quickName}
-                onChange={(event) => setQuickName(event.target.value)}
-                placeholder={query.trim() ? query.trim() : "Имя клиента"}
-              />
-              <Input value={quickPhone} onChange={(event) => setQuickPhone(event.target.value)} placeholder="Телефон" />
-            </div>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-              <Button
-                type="button"
-                size="sm"
-                className="w-full"
-                disabled={creatingClient || !(quickName.trim() || query.trim()) || !quickPhone.trim()}
-                onClick={submitQuickClient}
-              >
-                {creatingClient ? "Создание..." : "Создать нового клиента"}
-              </Button>
-              <Button asChild type="button" size="sm" variant="outline" className="w-full">
-                <Link href="/clients?new=1">Открыть клиентов</Link>
-              </Button>
-            </div>
-          </div>
-        </Command>
-      </PopoverContent>
-    </Popover>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </>
   );
 }
 
@@ -859,7 +875,7 @@ export function AppointmentsManager() {
                 </div>
                 {Object.values(form.formState.errors).length ? (
                   <div className="md:col-span-2">
-                    <ErrorState title={Object.values(form.formState.errors)[0]?.message ?? "Проверьте обязательные поля"} />
+                    <ErrorState title="Проверьте обязательные поля" />
                   </div>
                 ) : null}
                 {formError ? (

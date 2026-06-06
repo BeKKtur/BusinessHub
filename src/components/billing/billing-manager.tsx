@@ -109,7 +109,15 @@ async function fetchBillingStatus() {
     throw new Error(formatApiError(payload, "Не удалось загрузить статус подписки"));
   }
 
-  return payload?.data ?? fallbackBillingStatus;
+  return {
+    ...fallbackBillingStatus,
+    ...(payload?.data ?? {}),
+    usage: {
+      ...fallbackBillingStatus.usage,
+      ...(payload?.data?.usage ?? {})
+    },
+    payments: payload?.data?.payments ?? fallbackBillingStatus.payments
+  };
 }
 
 function loadPaddleScript() {
@@ -185,17 +193,21 @@ export function BillingManager() {
           settings: { successUrl: checkout.successUrl }
         });
       } catch {
-        if (checkout.checkoutUrl) {
-          window.location.assign(checkout.checkoutUrl);
-          return;
-        }
+        try {
+          window.Paddle.Checkout.open({
+            items: [{ priceId: checkout.priceId, quantity: 1 }],
+            ...(checkout.customerEmail ? { customer: { email: checkout.customerEmail } } : {}),
+            customData: checkout.customData,
+            settings: { successUrl: checkout.successUrl }
+          });
+        } catch {
+          if (checkout.checkoutUrl) {
+            window.location.assign(checkout.checkoutUrl);
+            return;
+          }
 
-        window.Paddle.Checkout.open({
-          items: [{ priceId: checkout.priceId, quantity: 1 }],
-          ...(checkout.customerEmail ? { customer: { email: checkout.customerEmail } } : {}),
-          customData: checkout.customData,
-          settings: { successUrl: checkout.successUrl }
-        });
+          throw new Error("Paddle checkout could not be opened.");
+        }
       }
       setNotice({ type: "success", message: "Checkout открыт" });
     } finally {

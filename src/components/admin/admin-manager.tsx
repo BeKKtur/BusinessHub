@@ -58,13 +58,15 @@ type AdminRevenue = {
   currency: string;
 };
 
-type GrantOption = "free" | "pro_30" | "pro_90" | "business_30" | "business_90" | "business_forever";
+type GrantOption = "free" | "pro" | "business" | "pro_30" | "pro_90" | "business_30" | "business_90" | "business_forever";
 type GrantReason = "Beta tester" | "Partner" | "Manual grant" | "Refund compensation" | "Other";
 
 const grantOptions: Array<{ value: GrantOption; label: string }> = [
   { value: "free", label: "Give Free" },
+  { value: "pro", label: "Give Pro" },
   { value: "pro_30", label: "Give Pro for 30 days" },
   { value: "pro_90", label: "Give Pro for 90 days" },
+  { value: "business", label: "Give Business" },
   { value: "business_30", label: "Give Business for 30 days" },
   { value: "business_90", label: "Give Business for 90 days" },
   { value: "business_forever", label: "Give Business forever" }
@@ -156,7 +158,17 @@ export function AdminManager() {
 
   const planMutation = useMutation({
     mutationFn: ({ userId, grant, reason, confirmOverwrite }: { userId: string; grant: GrantOption; reason: GrantReason; confirmOverwrite: boolean }) =>
-      postAdminAction<AdminSubscription>("/api/admin/change-plan", { userId, grant, reason, confirmOverwrite }, "Не удалось изменить план"),
+      postAdminAction<AdminSubscription>(
+        "/api/admin/change-plan",
+        {
+          userId,
+          grant,
+          ...(grant === "free" || grant === "pro" || grant === "business" ? { plan: grant } : {}),
+          reason,
+          confirmOverwrite
+        },
+        "Не удалось изменить план"
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "subscriptions"] });
       void queryClient.invalidateQueries({ queryKey: ["admin", "activity"] });
@@ -194,11 +206,10 @@ export function AdminManager() {
     const subscription = business ? subscriptionByBusinessId.get(business.id) : undefined;
     const reason = grantReasonsByUser[user.id] ?? "Manual grant";
     const hasPaddleSubscription = Boolean(subscription?.paddle_subscription_id);
-    const message = hasPaddleSubscription
-      ? `У ${user.email} есть Paddle-подписка (${subscription?.paddle_subscription_id}). Подтвердить ручное изменение плана?`
-      : `Подтвердить manual grant для ${user.email}?`;
-
-    if (!window.confirm(message)) return;
+    if (hasPaddleSubscription) {
+      const message = `У ${user.email} есть Paddle-подписка (${subscription?.paddle_subscription_id}). Подтвердить ручное изменение плана?`;
+      if (!window.confirm(message)) return;
+    }
 
     planMutation.mutate({ userId: user.id, grant, reason, confirmOverwrite: hasPaddleSubscription });
   }
@@ -296,7 +307,7 @@ export function AdminManager() {
                             ))}
                           </select>
                           <select
-                            aria-label={`Manual grant ${user.email}`}
+                            aria-label={`Изменить план ${user.email}`}
                             className="h-9 rounded-md border border-input bg-background px-2 text-sm"
                             defaultValue=""
                             onChange={(event) => {

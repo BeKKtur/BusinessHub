@@ -16,10 +16,10 @@ export const planDetails: Record<
   free: {
     label: "Free",
     clients: "50 клиентов",
-    appointments: "50 записей",
+    appointments: "100 записей",
     clientLimit: 50,
-    appointmentLimit: 50,
-    features: ["До 50 клиентов", "До 50 записей", "Базовый dashboard"]
+    appointmentLimit: 100,
+    features: ["До 50 клиентов", "До 100 записей", "Базовый dashboard"]
   },
   pro: {
     label: "Pro",

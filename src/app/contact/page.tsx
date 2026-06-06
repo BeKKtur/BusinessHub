@@ -26,6 +26,7 @@ export default function ContactPage() {
                 Telegram: @JustTriple_B
               </a>
             </div>
+            <p className="text-xs text-muted-foreground">Резервный Telegram контакт: @batyrbekovbektur0</p>
           </CardContent>
         </Card>
       </div>
