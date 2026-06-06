@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CalendarDays, CheckCircle2, Clock, Pencil, Plus, Save, Search, UserX, X, XCircle } from "lucide-react";
+import { Ban, CalendarDays, Check, CheckCircle2, ChevronsUpDown, Clock, Pencil, Plus, Save, UserPlus, UserX, X, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -14,10 +14,12 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toast, type ToastNotice } from "@/components/ui/toast";
 
@@ -135,6 +137,26 @@ async function fetchClients() {
   return payload.data;
 }
 
+async function createQuickClient(payload: { name: string; phone: string }) {
+  const response = await fetch("/api/clients", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...payload, email: "", notes: "", telegram: "" })
+  });
+
+  if (!response.ok) {
+    const errorPayload = (await response.json().catch(() => null)) as { error?: string; code?: string } | null;
+    if (errorPayload?.code === "PLAN_LIMIT_REACHED") {
+      const error = new Error(errorPayload.error ?? "Достигнут лимит тарифа.");
+      error.name = "PLAN_LIMIT_REACHED";
+      throw error;
+    }
+    throw new Error(errorPayload?.error ?? "Не удалось создать клиента");
+  }
+
+  return ((await response.json()) as { data: Client }).data;
+}
+
 async function fetchServices() {
   const response = await fetch("/api/services");
   if (!response.ok) {
@@ -214,15 +236,20 @@ function buildPayload(form: AppointmentFormState, services: Service[]): Appointm
 function ClientCombobox({
   clients,
   value,
-  onChange
+  onChange,
+  onCreateClient,
+  creatingClient
 }: {
   clients: Client[];
   value: string;
   onChange: (value: string) => void;
+  onCreateClient: (payload: { name: string; phone: string }) => void;
+  creatingClient: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [quickName, setQuickName] = useState("");
+  const [quickPhone, setQuickPhone] = useState("");
   const selectedClient = clients.find((client) => client.id === value);
   const filteredClients = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -235,88 +262,95 @@ function ClientCombobox({
       .slice(0, 8);
   }, [clients, query]);
 
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [query]);
-
   function selectClient(client: Client) {
     onChange(client.id);
     setQuery("");
     setOpen(false);
   }
 
+  function submitQuickClient() {
+    const name = quickName.trim() || query.trim();
+    const phone = quickPhone.trim();
+    if (!name || !phone) return;
+
+    onCreateClient({ name, phone });
+    setQuickName("");
+    setQuickPhone("");
+    setQuery("");
+  }
+
   return (
-    <div className="relative">
-      <button
-        type="button"
-        className="flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className={cn("min-w-0 truncate", !selectedClient && "text-muted-foreground")}>
-          {selectedClient ? `${selectedClient.name} · ${selectedClient.phone || selectedClient.email || "без контакта"}` : "Выберите клиента"}
-        </span>
-        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-      </button>
-      {open ? (
-        <div className="absolute z-50 mt-2 w-full rounded-lg border bg-popover p-2 shadow-premium">
-          <Input
-            autoFocus
-            value={query}
-            placeholder="Поиск по имени, телефону или email"
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                setActiveIndex((index) => Math.min(index + 1, Math.max(filteredClients.length - 1, 0)));
-              }
-              if (event.key === "ArrowUp") {
-                event.preventDefault();
-                setActiveIndex((index) => Math.max(index - 1, 0));
-              }
-              if (event.key === "Enter") {
-                event.preventDefault();
-                const client = filteredClients[activeIndex];
-                if (client) selectClient(client);
-              }
-              if (event.key === "Escape") {
-                setOpen(false);
-              }
-            }}
-          />
-          <div className="mt-2 max-h-56 overflow-y-auto" role="listbox">
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-10 w-full justify-between px-3 font-normal"
+        >
+          <span className={cn("min-w-0 truncate text-left", !selectedClient && "text-muted-foreground")}>
+            {selectedClient ? `${selectedClient.name} · ${selectedClient.phone || selectedClient.email || "без контакта"}` : "Выберите клиента"}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput value={query} onValueChange={setQuery} placeholder="Поиск по имени, телефону или email" />
+          <CommandList>
             {filteredClients.length ? (
-              filteredClients.map((client, index) => (
-                <button
-                  key={client.id}
-                  type="button"
-                  role="option"
-                  aria-selected={client.id === value}
-                  className={cn(
-                    "flex w-full flex-col rounded-md px-3 py-2 text-left text-sm hover:bg-muted",
-                    index === activeIndex && "bg-muted",
-                    client.id === value && "text-primary"
-                  )}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => selectClient(client)}
-                >
-                  <span className="font-medium">{client.name}</span>
-                  <span className="text-xs text-muted-foreground">{client.phone || client.email || "Контакт не указан"}</span>
-                </button>
-              ))
+              <CommandGroup heading="Клиенты">
+                {filteredClients.map((client) => (
+                  <CommandItem
+                    key={client.id}
+                    value={`${client.name} ${client.phone} ${client.email ?? ""}`}
+                    onSelect={() => selectClient(client)}
+                    className="gap-2"
+                  >
+                    <Check className={cn("h-4 w-4 shrink-0", client.id === value ? "opacity-100" : "opacity-0")} />
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{client.name}</div>
+                      <div className="truncate text-xs text-muted-foreground">{client.phone || client.email || "Контакт не указан"}</div>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
             ) : (
-              <div className="rounded-md border bg-background p-3 text-sm">
-                <div className="text-muted-foreground">Клиент не найден</div>
-                <Button asChild className="mt-3 w-full" size="sm" variant="outline">
-                  <Link href="/clients?new=1">Создать нового клиента</Link>
-                </Button>
-              </div>
+              <CommandEmpty>No clients found</CommandEmpty>
             )}
+          </CommandList>
+          <div className="border-t p-3">
+            <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <UserPlus className="h-3.5 w-3.5" />
+              Быстро создать клиента
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input
+                value={quickName}
+                onChange={(event) => setQuickName(event.target.value)}
+                placeholder={query.trim() ? query.trim() : "Имя клиента"}
+              />
+              <Input value={quickPhone} onChange={(event) => setQuickPhone(event.target.value)} placeholder="Телефон" />
+            </div>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                size="sm"
+                className="w-full"
+                disabled={creatingClient || !(quickName.trim() || query.trim()) || !quickPhone.trim()}
+                onClick={submitQuickClient}
+              >
+                {creatingClient ? "Создание..." : "Создать и выбрать"}
+              </Button>
+              <Button asChild type="button" size="sm" variant="outline" className="w-full">
+                <Link href="/clients?new=1">Открыть клиентов</Link>
+              </Button>
+            </div>
           </div>
-        </div>
-      ) : null}
-    </div>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -389,6 +423,21 @@ export function AppointmentsManager() {
         setUpgradeOpen(true);
       }
       setNotice({ type: "error", message: error instanceof Error ? error.message : "Не удалось сохранить запись" });
+    }
+  });
+
+  const quickClientMutation = useMutation({
+    mutationFn: createQuickClient,
+    onSuccess: (createdClient) => {
+      queryClient.setQueryData<Client[]>(["clients"], (current = []) => [createdClient, ...current]);
+      form.setValue("client_id", createdClient.id, { shouldValidate: true, shouldDirty: true });
+      setNotice({ type: "success", message: "Клиент создан и выбран" });
+    },
+    onError: (error) => {
+      if (error instanceof Error && error.name === "PLAN_LIMIT_REACHED") {
+        setUpgradeOpen(true);
+      }
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Не удалось создать клиента" });
     }
   });
 
@@ -694,6 +743,8 @@ export function AppointmentsManager() {
                     clients={clients}
                     value={formValues.client_id}
                     onChange={(clientId) => form.setValue("client_id", clientId, { shouldValidate: true })}
+                    onCreateClient={(payload) => quickClientMutation.mutate(payload)}
+                    creatingClient={quickClientMutation.isPending}
                   />
                   {form.formState.errors.client_id ? (
                     <p className="text-xs text-destructive">{form.formState.errors.client_id.message}</p>
