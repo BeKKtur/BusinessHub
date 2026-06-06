@@ -139,7 +139,6 @@ export async function ensureUserWorkspace(admin: SupabaseAdmin, input: Provision
 
   const { error: subscriptionError } = await admin.from("subscriptions").insert({
     business_id: businessId,
-    user_id: input.user.id,
     plan: "free",
     status: "active"
   });

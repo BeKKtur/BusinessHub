@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Environment, Paddle } from "@paddle/paddle-node-sdk";
 import { planDetails, type SubscriptionPlan } from "@/lib/plans";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database";
 
 export type BillingStatus = {
@@ -62,6 +63,18 @@ type CountResult = Promise<{ count: number | null; error: QueryError | null }>;
 type SubscriptionTable = {
   select: (columns: string) => {
     eq: (column: "business_id", value: string) => {
+      limit: (count: number) => {
+        maybeSingle: () => MaybeSingleResult;
+      };
+    };
+  };
+};
+type SubscriptionInsertTable = {
+  insert: (payload: { business_id: string; plan: "free"; status: "active" }) => MaybeSingleResult;
+};
+type BusinessOwnerTable = {
+  select: (columns: string) => {
+    eq: (column: "id", value: string) => {
       limit: (count: number) => {
         maybeSingle: () => MaybeSingleResult;
       };
@@ -245,19 +258,69 @@ export function subscriptionDefaults(subscription?: Partial<BillingStatus> | nul
   };
 }
 
+async function createFreeSubscriptionIfMissing(businessId: string) {
+  const admin = createAdminClient();
+  const businessTable = admin.from("businesses") as unknown as BusinessOwnerTable;
+  const { data: business, error: businessError } = await businessTable
+    .select("owner_id")
+    .eq("id", businessId)
+    .limit(1)
+    .maybeSingle();
+
+  if (businessError || !business) {
+    console.warn("[billing.subscription.provision]", {
+      businessId,
+      message: businessError?.message ?? "Business not found. Free fallback returned without insert."
+    });
+    return subscriptionDefaults();
+  }
+
+  const subscriptionTable = admin.from("subscriptions") as unknown as SubscriptionInsertTable;
+  const { error } = await subscriptionTable.insert({
+    business_id: businessId,
+    plan: "free",
+    status: "active"
+  });
+
+  if (error) {
+    console.warn("[billing.subscription.provision]", {
+      businessId,
+      message: error.message
+    });
+    return subscriptionDefaults();
+  }
+
+  console.info("[billing.subscription.provision]", {
+    businessId,
+    ownerId: (business as { owner_id?: string }).owner_id ?? null,
+    plan: "free",
+    message: "Free subscription created because no subscription row existed."
+  });
+
+  return subscriptionDefaults({ plan: "free", status: "active" });
+}
+
 export async function getBusinessSubscription(supabase: SupabaseLike, businessId: string): Promise<BillingStatus> {
   const table = supabase.from("subscriptions") as SubscriptionTable;
   const { data, error } = await table
     .select(
-      "user_id, plan, status, paddle_id, paddle_subscription_id, paddle_customer_id, paddle_price_id, current_period_start, current_period_end, next_billed_at, trial_ends_at, cancelled_at, portal_url"
+      "plan, status, paddle_id, paddle_subscription_id, paddle_customer_id, paddle_price_id, current_period_end, next_billed_at, trial_ends_at, cancelled_at, portal_url"
     )
     .eq("business_id", businessId)
     .limit(1)
     .maybeSingle();
 
   if (error) {
-    console.error("[billing.subscription]", { message: error.message });
-    throw new Error("Failed to load subscription status");
+    console.warn("[billing.subscription.fallback]", {
+      businessId,
+      message: error.message,
+      fallbackPlan: "free"
+    });
+    return subscriptionDefaults();
+  }
+
+  if (!data) {
+    return createFreeSubscriptionIfMissing(businessId);
   }
 
   const subscription = subscriptionDefaults(data as Partial<BillingStatus> | null);

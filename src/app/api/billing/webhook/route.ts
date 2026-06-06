@@ -98,16 +98,6 @@ async function findBusinessId(admin: ReturnType<typeof createAdminClient>, data:
   return (subscription as { business_id: string } | null)?.business_id ?? null;
 }
 
-async function findBusinessOwnerId(admin: ReturnType<typeof createAdminClient>, businessId: string) {
-  const { data, error } = await admin.from("businesses").select("owner_id").eq("id", businessId).limit(1).maybeSingle();
-  if (error) {
-    console.error("[billing.webhook.findOwner]", { businessId, message: error.message });
-    return null;
-  }
-
-  return (data as { owner_id: string } | null)?.owner_id ?? null;
-}
-
 async function upsertSubscription(
   admin: ReturnType<typeof createAdminClient>,
   businessId: string,
@@ -115,7 +105,7 @@ async function upsertSubscription(
 ) {
   const { data: existing, error: lookupError } = await admin
     .from("subscriptions")
-    .select("id, plan, user_id")
+    .select("id, plan")
     .eq("business_id", businessId)
     .limit(1)
     .maybeSingle();
@@ -127,7 +117,6 @@ async function upsertSubscription(
   const timestamp = new Date().toISOString();
   const existingPlan = (existing as { plan?: SubscriptionPlan } | null)?.plan;
   const subscriptionUpdate = {
-    user_id: payload.user_id ?? (existing as { user_id?: string | null } | null)?.user_id ?? null,
     plan: payload.plan,
     status: payload.status,
     paddle_id: payload.paddle_id,
@@ -189,7 +178,6 @@ async function handleSubscriptionEvent(eventType: string, data: JsonRecord) {
     .maybeSingle();
   const currentPlan = (currentSubscription as { plan?: SubscriptionPlan } | null)?.plan;
   const plan: SubscriptionPlan = status === "canceled" ? "free" : eventPlan ?? currentPlan ?? "free";
-  const ownerId = await findBusinessOwnerId(admin, businessId);
 
   if (!eventPlan && status !== "canceled") {
     console.warn("[billing.webhook.subscription.plan]", {
@@ -204,7 +192,6 @@ async function handleSubscriptionEvent(eventType: string, data: JsonRecord) {
 
   await upsertSubscription(admin, businessId, {
     business_id: businessId,
-    user_id: ownerId,
     plan,
     status,
     paddle_id: subscriptionId,

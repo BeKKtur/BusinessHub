@@ -219,7 +219,13 @@ export async function getDashboardData() {
   const todayRevenues = (todayRevenueResult.data ?? []) as MoneyRow[];
   const monthRevenues = (monthRevenueResult.data ?? []) as MoneyRow[];
   const monthExpenses = (monthExpensesResult.data ?? []) as ExpenseRow[];
-  const subscription = await getBusinessSubscription(context.supabase, context.businessId);
+  const subscription = await getBusinessSubscription(context.supabase, context.businessId).catch((billingError) => {
+    console.warn("[dashboard.billing.fallback]", {
+      businessId: context.businessId,
+      message: billingError instanceof Error ? billingError.message : "Unknown billing error"
+    });
+    return { plan: "free" as const, status: "active" };
+  });
   const activity: ActivityItem[] = [
     ...clients.slice(0, 2).map((client) => ({
       id: `client-${client.id}`,
