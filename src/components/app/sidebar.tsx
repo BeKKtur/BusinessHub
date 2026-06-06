@@ -64,7 +64,7 @@ export function Sidebar({ role = "user", plan = "free", subscriptionStatus = "ac
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={item.href as Route}
                 className={cn(
                   "flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors",
                   active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"

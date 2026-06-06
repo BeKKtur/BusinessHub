@@ -4,6 +4,7 @@ import {
   CalendarDays,
   CreditCard,
   LayoutDashboard,
+  UserCircle,
   ReceiptText,
   Scissors,
   Settings,
@@ -43,6 +44,7 @@ export const plans = [
 
 export const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/profile", label: "Профиль", icon: UserCircle },
   { href: "/clients", label: "Клиенты", icon: Users },
   { href: "/appointments", label: "Записи", icon: CalendarDays },
   { href: "/services", label: "Услуги", icon: Scissors },

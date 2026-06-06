@@ -5,6 +5,7 @@ import { getSupabasePublicEnvStatus } from "@/lib/env";
 
 const protectedRoutes = [
   "/dashboard",
+  "/profile",
   "/clients",
   "/appointments",
   "/services",
