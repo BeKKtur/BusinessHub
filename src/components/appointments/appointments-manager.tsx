@@ -401,7 +401,7 @@ export function AppointmentsManager() {
         </Button>
       </div>
 
-      <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.15fr)]">
+      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.15fr)]">
         <Card className="h-fit min-w-0">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -411,7 +411,7 @@ export function AppointmentsManager() {
           </CardHeader>
           <CardContent>
             <div className="mb-3 text-sm font-medium capitalize">{selectedDateLabel}</div>
-            <div className="grid auto-rows-fr grid-cols-7 gap-2 text-center text-sm">
+            <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] gap-2 overflow-visible text-center text-sm">
               {monthDays.map((day) => {
                 const dayKey = toDateKey(day);
                 const isSelected = dayKey === selectedDate;
@@ -421,7 +421,7 @@ export function AppointmentsManager() {
                   <button
                     key={dayKey}
                     className={cn(
-                      "relative flex aspect-square min-h-9 items-center justify-center rounded-md border bg-background transition-colors hover:border-primary hover:bg-primary/10 sm:min-h-10",
+                      "relative flex min-h-10 items-center justify-center rounded-md border bg-background transition-colors hover:border-primary hover:bg-primary/10 sm:aspect-square",
                       isSelected && "border-primary bg-primary text-primary-foreground hover:bg-primary"
                     )}
                     onClick={() => {
