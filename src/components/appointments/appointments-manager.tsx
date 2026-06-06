@@ -317,13 +317,13 @@ function ClientCombobox({
                 ))}
               </CommandGroup>
             ) : (
-              <CommandEmpty>No clients found</CommandEmpty>
+              <CommandEmpty>Клиент не найден</CommandEmpty>
             )}
           </CommandList>
           <div className="border-t p-3">
             <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
               <UserPlus className="h-3.5 w-3.5" />
-              Быстро создать клиента
+              Создать нового клиента
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <Input
@@ -341,7 +341,7 @@ function ClientCombobox({
                 disabled={creatingClient || !(quickName.trim() || query.trim()) || !quickPhone.trim()}
                 onClick={submitQuickClient}
               >
-                {creatingClient ? "Создание..." : "Создать и выбрать"}
+                {creatingClient ? "Создание..." : "Создать нового клиента"}
               </Button>
               <Button asChild type="button" size="sm" variant="outline" className="w-full">
                 <Link href="/clients?new=1">Открыть клиентов</Link>
