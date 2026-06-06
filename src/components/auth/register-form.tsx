@@ -29,6 +29,7 @@ type RegisterValues = z.infer<typeof registerSchema>;
 export function RegisterForm() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const form = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -59,13 +60,16 @@ export function RegisterForm() {
   }
 
   async function onGoogleRegister() {
+    console.log("Google OAuth clicked");
     setError(null);
+    setGoogleLoading(true);
     try {
       const supabase = createClient();
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`
+          redirectTo: `${window.location.origin}/auth/callback`,
+          skipBrowserRedirect: true
         }
       });
 
@@ -82,6 +86,8 @@ export function RegisterForm() {
       setError("Не удалось открыть Google OAuth.");
     } catch (oauthError) {
       setError(oauthError instanceof Error ? oauthError.message : "Не удалось открыть Google OAuth.");
+    } finally {
+      setGoogleLoading(false);
     }
   }
 
@@ -137,7 +143,7 @@ export function RegisterForm() {
           </Button>
           <Button className="w-full" variant="outline" type="button" onClick={onGoogleRegister}>
             <Chrome className="h-4 w-4" />
-            Google OAuth
+            {googleLoading ? "Создаем новый аккаунт..." : "Google OAuth"}
           </Button>
         </form>
       </CardContent>

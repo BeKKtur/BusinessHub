@@ -27,8 +27,15 @@ export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(
-    searchParams.get("reason") === "supabase" ? "Supabase не настроен. Заполните .env.local реальными ключами." : null
+    searchParams.get("reason") === "supabase"
+      ? "Supabase не настроен. Заполните .env.local реальными ключами."
+      : searchParams.get("reason") === "oauth"
+        ? "Не удалось завершить вход через Google. Проверьте настройки OAuth и попробуйте снова."
+        : searchParams.get("reason") === "oauth_existing"
+          ? "Аккаунт уже существует. Выполняем вход."
+        : null
   );
+  const [googleLoading, setGoogleLoading] = useState(false);
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" }
@@ -53,13 +60,16 @@ export function LoginForm() {
   }
 
   async function onGoogleLogin() {
+    console.log("Google OAuth clicked");
     setError(null);
+    setGoogleLoading(true);
     try {
       const supabase = createClient();
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`
+          redirectTo: `${window.location.origin}/auth/callback`,
+          skipBrowserRedirect: true
         }
       });
 
@@ -76,6 +86,8 @@ export function LoginForm() {
       setError("Не удалось открыть Google OAuth.");
     } catch (oauthError) {
       setError(oauthError instanceof Error ? oauthError.message : "Не удалось открыть Google OAuth.");
+    } finally {
+      setGoogleLoading(false);
     }
   }
 
@@ -105,7 +117,7 @@ export function LoginForm() {
           </Button>
           <Button className="w-full" variant="outline" type="button" onClick={onGoogleLogin}>
             <Chrome className="h-4 w-4" />
-            Google OAuth
+            {googleLoading ? "Аккаунт уже существует. Выполняем вход." : "Google OAuth"}
           </Button>
         </form>
         <p className="mt-5 text-center text-sm text-muted-foreground">

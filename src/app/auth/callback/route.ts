@@ -34,8 +34,39 @@ export async function GET(request: NextRequest) {
     return redirectTo(request, "/login", { reason: "oauth" });
   }
 
+  const admin = createAdminClient();
+  const email = user.email?.trim().toLowerCase();
+  if (!email) {
+    console.error("[auth.callback.email]", { message: "OAuth user email is missing" });
+    return redirectTo(request, "/login", { reason: "oauth" });
+  }
+
+  const { data: existingProfile, error: existingProfileError } = await admin
+    .from("profiles")
+    .select("id, email")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (existingProfileError) {
+    console.error("[auth.callback.profileLookup]", { message: existingProfileError.message });
+    return redirectTo(request, "/login", { reason: "oauth" });
+  }
+
+  if (existingProfile && existingProfile.id !== user.id) {
+    console.warn("[auth.callback.duplicateEmail]", {
+      message: "OAuth returned a different auth user for an email that already has a BusinessHub profile.",
+      email
+    });
+    await supabase.auth.signOut();
+    return redirectTo(request, "/login", { reason: "oauth_existing" });
+  }
+
   try {
-    await ensureUserWorkspace(createAdminClient(), { user });
+    console.info("[auth.callback.provision]", {
+      message: existingProfile ? "Аккаунт уже существует. Выполняем вход." : "Создаем новый аккаунт…",
+      email
+    });
+    await ensureUserWorkspace(admin, { user });
   } catch (provisionError) {
     console.error("[auth.callback.provision]", {
       message: provisionError instanceof Error ? provisionError.message : "Unknown provisioning error"
