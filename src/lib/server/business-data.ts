@@ -1,5 +1,7 @@
 import { headers } from "next/headers";
 import { getSupabaseServerEnvStatus } from "@/lib/env";
+import { getBusinessSubscription } from "@/lib/server/billing";
+import { planDetails, type SubscriptionPlan } from "@/lib/plans";
 import { createClient } from "@/lib/supabase/server";
 import type { Appointment, Client, Database, Service } from "@/types/database";
 
@@ -168,15 +170,22 @@ export async function getDashboardData() {
           { id: "e2e-activity-1", type: "appointment", label: "Запись на 09:00", createdAt: "2026-06-04T09:00:00Z" },
           { id: "e2e-activity-2", type: "appointment", label: "Запись на 09:00", createdAt: "2026-06-04T09:00:00Z" }
         ] as ActivityItem[],
-        revenueSeries: [] as RevenuePoint[]
+        revenueSeries: [] as RevenuePoint[],
+        billing: {
+          plan: "free" as SubscriptionPlan,
+          status: "active",
+          usage: { clients: 0, appointments: 0 },
+          limits: planDetails.free
+        }
       }
     };
   }
 
   const { todayStart, todayEnd, monthStart } = getDateRange();
-  const [clientsCountResult, clientsResult, servicesResult, appointmentsResult, todayRevenueResult, monthRevenueResult, monthExpensesResult] =
+  const [clientsCountResult, appointmentsCountResult, clientsResult, servicesResult, appointmentsResult, todayRevenueResult, monthRevenueResult, monthExpensesResult] =
     await Promise.all([
       context.supabase.from("clients").select("id", { count: "exact", head: true }).eq("business_id", context.businessId),
+      context.supabase.from("appointments").select("id", { count: "exact", head: true }).eq("business_id", context.businessId),
       context.supabase.from("clients").select("id, name, created_at").eq("business_id", context.businessId).order("created_at", { ascending: false }).limit(4),
       context.supabase.from("services").select("id, name, created_at").eq("business_id", context.businessId).order("created_at", { ascending: false }).limit(4),
       context.supabase
@@ -196,7 +205,7 @@ export async function getDashboardData() {
       context.supabase.from("expenses").select("*").eq("business_id", context.businessId).gte("occurred_at", monthStart)
     ]);
 
-  const failed = [clientsCountResult, clientsResult, servicesResult, appointmentsResult, todayRevenueResult, monthRevenueResult, monthExpensesResult].find(
+  const failed = [clientsCountResult, appointmentsCountResult, clientsResult, servicesResult, appointmentsResult, todayRevenueResult, monthRevenueResult, monthExpensesResult].find(
     (result) => result.error
   );
   if (failed?.error) {
@@ -210,6 +219,7 @@ export async function getDashboardData() {
   const todayRevenues = (todayRevenueResult.data ?? []) as MoneyRow[];
   const monthRevenues = (monthRevenueResult.data ?? []) as MoneyRow[];
   const monthExpenses = (monthExpensesResult.data ?? []) as ExpenseRow[];
+  const subscription = await getBusinessSubscription(context.supabase, context.businessId);
   const activity: ActivityItem[] = [
     ...clients.slice(0, 2).map((client) => ({
       id: `client-${client.id}`,
@@ -241,7 +251,16 @@ export async function getDashboardData() {
       todayRevenue: sumMoney(todayRevenues),
       monthRevenue: sumMoney(monthRevenues),
       activity,
-      revenueSeries: createMonthSeries(monthRevenues, monthExpenses)
+      revenueSeries: createMonthSeries(monthRevenues, monthExpenses),
+      billing: {
+        plan: subscription.plan,
+        status: subscription.status,
+        usage: {
+          clients: clientsCountResult.count ?? clients.length,
+          appointments: appointmentsCountResult.count ?? 0
+        },
+        limits: planDetails[subscription.plan]
+      }
     }
   };
 }

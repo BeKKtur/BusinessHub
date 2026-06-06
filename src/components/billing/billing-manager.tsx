@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ExternalLink } from "lucide-react";
+import { Ban, Check, ExternalLink } from "lucide-react";
 import { plans } from "@/lib/constants";
 import { formatApiError } from "@/lib/api-client";
 import { formatLimit, planDetails, type SubscriptionPlan } from "@/lib/plans";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TD, TH, TBody, THead, TR, Table } from "@/components/ui/table";
 import { Toast, type ToastNotice } from "@/components/ui/toast";
 
 const planSlugs = {
@@ -25,10 +26,24 @@ type BillingStatus = {
   paddle_subscription_id: string | null;
   paddle_customer_id: string | null;
   paddle_price_id: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
   next_billed_at: string | null;
   trial_ends_at: string | null;
   cancelled_at: string | null;
   portal_url: string | null;
+  usage: {
+    clients: number;
+    appointments: number;
+  };
+  payments: Array<{
+    id: string;
+    amount: number;
+    currency: string;
+    status: string;
+    paddle_transaction_id: string;
+    created_at: string;
+  }>;
 };
 
 type CheckoutResponse = {
@@ -53,10 +68,14 @@ const fallbackBillingStatus: BillingStatus = {
   paddle_subscription_id: null,
   paddle_customer_id: null,
   paddle_price_id: null,
+  current_period_start: null,
+  current_period_end: null,
   next_billed_at: null,
   trial_ends_at: null,
   cancelled_at: null,
-  portal_url: null
+  portal_url: null,
+  usage: { clients: 0, appointments: 0 },
+  payments: []
 };
 
 declare global {
@@ -125,6 +144,7 @@ export function BillingManager() {
   const [notice, setNotice] = useState<ToastNotice | undefined>();
   const [loadingPlan, setLoadingPlan] = useState<string | undefined>();
   const [portalLoading, setPortalLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
   const statusQuery = useQuery({
     queryKey: ["billing-status"],
     queryFn: fetchBillingStatus,
@@ -200,6 +220,26 @@ export function BillingManager() {
     }
   }
 
+  async function cancelSubscription() {
+    const confirmed = window.confirm("Отменить подписку? План останется в базе до обработки отмены Paddle.");
+    if (!confirmed) return;
+
+    setCancelLoading(true);
+    try {
+      const response = await fetch("/api/billing/cancel", { method: "POST" });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        setNotice({ type: "error", message: formatApiError(payload, "Не удалось отменить подписку") });
+        return;
+      }
+
+      setNotice({ type: "success", message: "Подписка отправлена на отмену" });
+      void statusQuery.refetch();
+    } finally {
+      setCancelLoading(false);
+    }
+  }
+
   if (statusQuery.isLoading) {
     return (
       <div className="grid gap-4 lg:grid-cols-3">
@@ -220,22 +260,51 @@ export function BillingManager() {
   return (
     <>
       <Toast notice={notice} onClose={() => setNotice(undefined)} />
-      <div className="mb-4 rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-        Текущий план: <span className="font-medium text-foreground">{currentPlan.label}</span>
-        {" · "}
-        Статус: <span className="font-medium text-foreground">{currentStatus.status}</span>
-        {" · "}
-        Следующее списание: <span className="font-medium text-foreground">{formatDate(currentStatus.next_billed_at)}</span>
-        <div className="mt-2">
-          Лимиты: клиенты {formatLimit(currentPlan.clientLimit)}, записи {formatLimit(currentPlan.appointmentLimit)}
+      <div className="mb-4 grid gap-4 lg:grid-cols-[1fr_0.8fr]">
+        <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+          <div>
+            Текущий план: <span className="font-medium text-foreground">{currentPlan.label}</span>
+            {" · "}
+            Статус: <span className="font-medium text-foreground">{currentStatus.status}</span>
+          </div>
+          <div className="mt-2">
+            Следующее списание:{" "}
+            <span className="font-medium text-foreground">{formatDate(currentStatus.current_period_end ?? currentStatus.next_billed_at)}</span>
+          </div>
+          <div className="mt-2">
+            Лимиты: клиенты {formatLimit(currentPlan.clientLimit)}, записи {formatLimit(currentPlan.appointmentLimit)}
+          </div>
+          <div className="mt-2">Если возникли вопросы по оплате, свяжитесь с поддержкой.</div>
+          {currentStatus.plan !== "free" ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button variant="outline" onClick={openPortal} disabled={portalLoading}>
+                <ExternalLink className="h-4 w-4" />
+                {portalLoading ? "Открываем..." : "Управлять подпиской"}
+              </Button>
+              <Button variant="destructive" onClick={cancelSubscription} disabled={cancelLoading}>
+                <Ban className="h-4 w-4" />
+                {cancelLoading ? "Отмена..." : "Отменить подписку"}
+              </Button>
+            </div>
+          ) : null}
         </div>
-        <div className="mt-2">Если возникли вопросы по оплате, свяжитесь с поддержкой.</div>
-        {currentStatus.plan !== "free" ? (
-          <Button className="mt-4" variant="outline" onClick={openPortal} disabled={portalLoading}>
-            <ExternalLink className="h-4 w-4" />
-            {portalLoading ? "Открываем..." : "Управлять подпиской"}
-          </Button>
-        ) : null}
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-sm font-medium">Использование</div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-md border bg-background p-3">
+              <div className="text-xs text-muted-foreground">Клиенты</div>
+              <div className="mt-1 text-xl font-semibold">
+                {currentStatus.usage.clients} / {formatLimit(currentPlan.clientLimit)}
+              </div>
+            </div>
+            <div className="rounded-md border bg-background p-3">
+              <div className="text-xs text-muted-foreground">Записи</div>
+              <div className="mt-1 text-xl font-semibold">
+                {currentStatus.usage.appointments} / {formatLimit(currentPlan.appointmentLimit)}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
         {plans.map((plan) => (
@@ -275,6 +344,42 @@ export function BillingManager() {
           </Card>
         ))}
       </div>
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle>История платежей</CardTitle>
+          <CardDescription>Последние платежи, полученные через Paddle.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {currentStatus.payments.length ? (
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Дата</TH>
+                  <TH>Transaction</TH>
+                  <TH>Статус</TH>
+                  <TH>Сумма</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {currentStatus.payments.map((payment) => (
+                  <TR key={payment.id}>
+                    <TD>{formatDate(payment.created_at)}</TD>
+                    <TD className="font-mono text-xs">{payment.paddle_transaction_id}</TD>
+                    <TD>{payment.status}</TD>
+                    <TD>
+                      {new Intl.NumberFormat("en-US", { style: "currency", currency: payment.currency || "USD" }).format(
+                        Number(payment.amount)
+                      )}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          ) : (
+            <div className="rounded-lg border bg-background p-6 text-sm text-muted-foreground">Платежей пока нет.</div>
+          )}
+        </CardContent>
+      </Card>
     </>
   );
 }

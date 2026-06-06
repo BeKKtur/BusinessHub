@@ -99,6 +99,7 @@ export type Database = {
         Row: {
           id: string;
           business_id: string;
+          user_id: string | null;
           plan: "free" | "pro" | "business";
           status: string;
           paddle_id: string | null;
@@ -117,6 +118,7 @@ export type Database = {
         Insert: {
           id?: string;
           business_id: string;
+          user_id?: string | null;
           plan?: "free" | "pro" | "business";
           status?: string;
           paddle_id?: string | null;
@@ -133,6 +135,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          user_id?: string | null;
           plan?: "free" | "pro" | "business";
           status?: string;
           paddle_id?: string | null;
@@ -150,9 +153,27 @@ export type Database = {
         Relationships: [];
       };
       payments: {
-        Row: { id: string; business_id: string; amount: number; currency: string; paddle_transaction_id: string; created_at: string };
-        Insert: { id?: string; business_id: string; amount: number; currency?: string; paddle_transaction_id: string; created_at?: string };
-        Update: { amount?: number; currency?: string; paddle_transaction_id?: string };
+        Row: {
+          id: string;
+          business_id: string;
+          subscription_id: string | null;
+          amount: number;
+          currency: string;
+          paddle_transaction_id: string;
+          status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          business_id: string;
+          subscription_id?: string | null;
+          amount: number;
+          currency?: string;
+          paddle_transaction_id: string;
+          status?: string;
+          created_at?: string;
+        };
+        Update: { subscription_id?: string | null; amount?: number; currency?: string; paddle_transaction_id?: string; status?: string };
         Relationships: [];
       };
       notifications: {

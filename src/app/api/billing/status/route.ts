@@ -4,6 +4,24 @@ import { getBusinessSubscription } from "@/lib/server/billing";
 import { createClient } from "@/lib/supabase/server";
 
 type BillingBusiness = { id: string };
+type PaymentRow = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  paddle_transaction_id: string;
+  created_at: string;
+};
+
+async function countRows(supabase: Awaited<ReturnType<typeof createClient>>, table: "clients" | "appointments", businessId: string) {
+  const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true }).eq("business_id", businessId);
+  if (error) {
+    console.error("[billing.status.usage]", { table, message: error.message });
+    throw new Error("Failed to load billing usage");
+  }
+
+  return count ?? 0;
+}
 
 export async function GET() {
   const envStatus = getSupabaseEnvStatus();
@@ -35,8 +53,31 @@ export async function GET() {
 
   try {
     const subscription = await getBusinessSubscription(supabase, business.id);
+    const [clientsUsed, appointmentsUsed, paymentsResult] = await Promise.all([
+      countRows(supabase, "clients", business.id),
+      countRows(supabase, "appointments", business.id),
+      supabase
+        .from("payments")
+        .select("id, amount, currency, status, paddle_transaction_id, created_at")
+        .eq("business_id", business.id)
+        .order("created_at", { ascending: false })
+        .limit(20)
+    ]);
+
+    if (paymentsResult.error) {
+      console.error("[billing.status.payments]", { message: paymentsResult.error.message });
+      return NextResponse.json({ error: "Failed to load payment history" }, { status: 500 });
+    }
+
     return NextResponse.json({
-      data: subscription
+      data: {
+        ...subscription,
+        usage: {
+          clients: clientsUsed,
+          appointments: appointmentsUsed
+        },
+        payments: (paymentsResult.data ?? []) as PaymentRow[]
+      }
     });
   } catch (error) {
     console.error("[billing.status]", { message: error instanceof Error ? error.message : "Unknown billing status error" });

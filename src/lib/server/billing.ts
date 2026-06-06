@@ -4,6 +4,7 @@ import { planDetails, type SubscriptionPlan } from "@/lib/plans";
 import type { Database } from "@/types/database";
 
 export type BillingStatus = {
+  user_id: string | null;
   plan: SubscriptionPlan;
   status: string;
   paddle_id: string | null;
@@ -228,6 +229,7 @@ export function paddleConfigError(missingEnv: string[]) {
 
 export function subscriptionDefaults(subscription?: Partial<BillingStatus> | null): BillingStatus {
   return {
+    user_id: subscription?.user_id ?? null,
     plan: subscription?.plan ?? "free",
     status: subscription?.status ?? "active",
     paddle_id: subscription?.paddle_id ?? null,
@@ -247,7 +249,7 @@ export async function getBusinessSubscription(supabase: SupabaseLike, businessId
   const table = supabase.from("subscriptions") as SubscriptionTable;
   const { data, error } = await table
     .select(
-      "plan, status, paddle_id, paddle_subscription_id, paddle_customer_id, paddle_price_id, current_period_start, current_period_end, next_billed_at, trial_ends_at, cancelled_at, portal_url"
+      "user_id, plan, status, paddle_id, paddle_subscription_id, paddle_customer_id, paddle_price_id, current_period_start, current_period_end, next_billed_at, trial_ends_at, cancelled_at, portal_url"
     )
     .eq("business_id", businessId)
     .limit(1)
@@ -301,9 +303,10 @@ export async function enforcePlanLimit(
   const resourceLabel = resource === "clients" ? "клиентов" : "записей";
   return NextResponse.json(
     {
-      error: `Достигнут лимит тарифа Free: ${limit} ${resourceLabel}. Перейдите на Pro или Business, чтобы продолжить.`,
+      error: `Достигнут лимит тарифа ${limits.label}: ${limit} ${resourceLabel}. Перейдите на более высокий тариф, чтобы продолжить.`,
       code: "PLAN_LIMIT_REACHED",
       upgradeRequired: true,
+      plan: subscription.plan,
       limit,
       currentCount
     },

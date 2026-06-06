@@ -7,6 +7,7 @@ import { TD, TH, TBody, THead, TR, Table } from "@/components/ui/table";
 import { RevenueChart } from "@/components/charts/revenue-chart";
 import { DashboardQuickActions } from "@/components/dashboard/dashboard-quick-actions";
 import { getDashboardData } from "@/lib/server/business-data";
+import { formatLimit } from "@/lib/plans";
 import { formatCurrency } from "@/lib/utils";
 
 export default async function DashboardPage() {
@@ -29,19 +30,56 @@ export default async function DashboardPage() {
     );
   }
 
-  const { activity, clients, clientsCount, monthRevenue, revenueSeries, services, todayAppointments, todayRevenue } = result.data;
+  const { activity, billing, clients, clientsCount, monthRevenue, revenueSeries, services, todayAppointments, todayRevenue } = result.data;
+  const clientLimit = billing.limits.clientLimit;
+  const appointmentLimit = billing.limits.appointmentLimit;
+  const closeToClientLimit = clientLimit !== "unlimited" && billing.usage.clients >= clientLimit * 0.8;
+  const closeToAppointmentLimit = appointmentLimit !== "unlimited" && billing.usage.appointments >= appointmentLimit * 0.8;
 
   return (
     <>
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-normal md:text-3xl">Dashboard</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-normal md:text-3xl">Dashboard</h1>
+            <Badge className="border-primary/30 bg-primary/10 text-primary">{billing.limits.label} plan</Badge>
+          </div>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
             Операционный центр: сегодняшние записи, клиенты, доходы и последние события.
           </p>
         </div>
         <DashboardQuickActions />
       </div>
+      <Card className="mb-4">
+        <CardContent className="grid gap-3 pt-5 sm:grid-cols-3">
+          <div>
+            <div className="text-xs uppercase text-muted-foreground">План</div>
+            <div className="mt-1 text-sm font-medium">{billing.limits.label} · {billing.status}</div>
+          </div>
+          <div>
+            <div className="text-xs uppercase text-muted-foreground">Клиенты</div>
+            <div className="mt-1 text-sm font-medium">
+              {billing.usage.clients} / {formatLimit(billing.limits.clientLimit)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs uppercase text-muted-foreground">Записи</div>
+            <div className="mt-1 text-sm font-medium">
+              {billing.usage.appointments} / {formatLimit(billing.limits.appointmentLimit)}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      {closeToClientLimit || closeToAppointmentLimit ? (
+        <Card className="mb-4 border-amber-500/30 bg-amber-500/5">
+          <CardContent className="pt-5 text-sm text-amber-700 dark:text-amber-300">
+            Вы приближаетесь к лимиту тарифа {billing.limits.label}.{" "}
+            {closeToClientLimit ? `Клиенты: ${billing.usage.clients}/${formatLimit(clientLimit)}. ` : null}
+            {closeToAppointmentLimit ? `Записи: ${billing.usage.appointments}/${formatLimit(appointmentLimit)}. ` : null}
+            Обновите тариф, чтобы не останавливать работу.
+          </CardContent>
+        </Card>
+      ) : null}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           { label: "Сегодняшние записи", value: todayAppointments.length, icon: CalendarCheck },

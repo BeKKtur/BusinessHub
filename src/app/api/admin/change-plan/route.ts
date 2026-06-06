@@ -57,7 +57,7 @@ export async function POST(request: Request) {
           .single()
       : context.admin
           .from("subscriptions")
-          .insert({ business_id: business.id, plan: payload.plan, status: "active" })
+          .insert({ business_id: business.id, user_id: payload.userId, plan: payload.plan, status: "active" })
           .select("id, business_id, plan, status, paddle_id, next_billed_at")
           .single();
 

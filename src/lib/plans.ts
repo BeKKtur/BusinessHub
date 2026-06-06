@@ -16,18 +16,18 @@ export const planDetails: Record<
   free: {
     label: "Free",
     clients: "50 клиентов",
-    appointments: "100 записей",
+    appointments: "50 записей",
     clientLimit: 50,
-    appointmentLimit: 100,
-    features: ["До 50 клиентов", "До 100 записей", "Базовый dashboard"]
+    appointmentLimit: 50,
+    features: ["До 50 клиентов", "До 50 записей", "Базовый dashboard"]
   },
   pro: {
     label: "Pro",
-    clients: "Безлимитные клиенты",
-    appointments: "Безлимитные записи",
-    clientLimit: "unlimited",
-    appointmentLimit: "unlimited",
-    features: ["Безлимитные клиенты", "Безлимитные записи", "Финансовая аналитика"]
+    clients: "500 клиентов",
+    appointments: "500 записей",
+    clientLimit: 500,
+    appointmentLimit: 500,
+    features: ["До 500 клиентов", "До 500 записей", "Финансовая аналитика"]
   },
   business: {
     label: "Business",

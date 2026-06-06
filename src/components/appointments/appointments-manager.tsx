@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CalendarDays, CheckCircle2, Clock, Pencil, Plus, Save, UserX, X, XCircle } from "lucide-react";
+import { Ban, CalendarDays, CheckCircle2, Clock, Pencil, Plus, Save, Search, UserX, X, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -209,6 +209,115 @@ function buildPayload(form: AppointmentFormState, services: Service[]): Appointm
     status: form.status,
     notes: form.notes?.trim() || undefined
   };
+}
+
+function ClientCombobox({
+  clients,
+  value,
+  onChange
+}: {
+  clients: Client[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const selectedClient = clients.find((client) => client.id === value);
+  const filteredClients = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return clients.slice(0, 8);
+
+    return clients
+      .filter((client) =>
+        [client.name, client.phone, client.email ?? ""].some((field) => field.toLowerCase().includes(normalizedQuery))
+      )
+      .slice(0, 8);
+  }, [clients, query]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query]);
+
+  function selectClient(client: Client) {
+    onChange(client.id);
+    setQuery("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className="flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className={cn("min-w-0 truncate", !selectedClient && "text-muted-foreground")}>
+          {selectedClient ? `${selectedClient.name} · ${selectedClient.phone || selectedClient.email || "без контакта"}` : "Выберите клиента"}
+        </span>
+        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </button>
+      {open ? (
+        <div className="absolute z-50 mt-2 w-full rounded-lg border bg-popover p-2 shadow-premium">
+          <Input
+            autoFocus
+            value={query}
+            placeholder="Поиск по имени, телефону или email"
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setActiveIndex((index) => Math.min(index + 1, Math.max(filteredClients.length - 1, 0)));
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveIndex((index) => Math.max(index - 1, 0));
+              }
+              if (event.key === "Enter") {
+                event.preventDefault();
+                const client = filteredClients[activeIndex];
+                if (client) selectClient(client);
+              }
+              if (event.key === "Escape") {
+                setOpen(false);
+              }
+            }}
+          />
+          <div className="mt-2 max-h-56 overflow-y-auto" role="listbox">
+            {filteredClients.length ? (
+              filteredClients.map((client, index) => (
+                <button
+                  key={client.id}
+                  type="button"
+                  role="option"
+                  aria-selected={client.id === value}
+                  className={cn(
+                    "flex w-full flex-col rounded-md px-3 py-2 text-left text-sm hover:bg-muted",
+                    index === activeIndex && "bg-muted",
+                    client.id === value && "text-primary"
+                  )}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => selectClient(client)}
+                >
+                  <span className="font-medium">{client.name}</span>
+                  <span className="text-xs text-muted-foreground">{client.phone || client.email || "Контакт не указан"}</span>
+                </button>
+              ))
+            ) : (
+              <div className="rounded-md border bg-background p-3 text-sm">
+                <div className="text-muted-foreground">Клиент не найден</div>
+                <Button asChild className="mt-3 w-full" size="sm" variant="outline">
+                  <Link href="/clients?new=1">Создать нового клиента</Link>
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function AppointmentsManager() {
@@ -581,21 +690,14 @@ export function AppointmentsManager() {
               >
                 <div className="space-y-2">
                   <Label htmlFor="client">Клиент</Label>
-                  <select
-                    id="client"
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  <ClientCombobox
+                    clients={clients}
                     value={formValues.client_id}
-                    onChange={(event) => form.setValue("client_id", event.target.value, { shouldValidate: true })}
-                  >
-                    <option value="" disabled>
-                      Выберите клиента
-                    </option>
-                    {clients.map((client) => (
-                      <option key={client.id} value={client.id}>
-                        {client.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(clientId) => form.setValue("client_id", clientId, { shouldValidate: true })}
+                  />
+                  {form.formState.errors.client_id ? (
+                    <p className="text-xs text-destructive">{form.formState.errors.client_id.message}</p>
+                  ) : null}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="service">Услуга</Label>
