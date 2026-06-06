@@ -83,7 +83,7 @@ function timeValue(appointment: Appointment) {
 }
 
 function formatMoney(value: number) {
-  return new Intl.NumberFormat("ru-RU", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 0
@@ -645,7 +645,6 @@ export function AppointmentsManager() {
                   const clientDetails = appointment.client ?? clients.find((client) => client.id === appointment.client_id) ?? null;
                   const serviceDetails = appointment.service ?? services.find((service) => service.id === appointment.service_id) ?? null;
                   const clientName = clientDetails?.name ?? "Клиент не найден";
-                  const clientContact = clientDetails?.phone || clientDetails?.email || "";
                   const serviceName = serviceDetails?.name ?? "Услуга не найдена";
                   const serviceMeta = serviceDetails
                     ? [Number.isFinite(serviceDetails.price) ? formatMoney(Number(serviceDetails.price)) : null, serviceDetails.duration_minutes ? `${serviceDetails.duration_minutes} мин` : null]
@@ -654,25 +653,27 @@ export function AppointmentsManager() {
                     : "";
 
                   return (
-                    <div key={appointment.id} className="grid min-w-0 gap-3 rounded-lg border bg-background p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
-                      <Badge className="w-fit shrink-0">
-                        <Clock className="mr-1 h-3 w-3" />
-                        {timeValue(appointment)}
-                      </Badge>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium" title={clientName}>
+                    <div
+                      key={appointment.id}
+                      className="grid min-w-0 gap-3 rounded-lg border bg-background p-3 sm:grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start"
+                    >
+                      <div className="flex items-start">
+                        <Badge className="w-fit shrink-0">
+                          <Clock className="mr-1 h-3 w-3" />
+                          {timeValue(appointment)}
+                        </Badge>
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <div className="truncate text-sm font-semibold leading-5 text-foreground" title={clientName}>
                           {clientName}
                         </div>
-                        <div className="truncate text-xs text-muted-foreground" title={clientContact || undefined}>
-                          {clientContact || "Контакт не указан"}
+                        <div className="truncate text-sm leading-5 text-foreground/90" title={serviceName}>
+                          {serviceName}
                         </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground">{serviceName}</span>
-                          {serviceMeta ? <span> · {serviceMeta}</span> : null}
-                        </div>
-                        {appointment.notes ? <div className="mt-1 break-words text-xs text-muted-foreground">{appointment.notes}</div> : null}
+                        {serviceMeta ? <div className="text-xs font-medium leading-5 text-muted-foreground">{serviceMeta}</div> : null}
+                        {appointment.notes ? <div className="break-words text-xs leading-5 text-muted-foreground">{appointment.notes}</div> : null}
                       </div>
-                      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:col-start-2 lg:col-start-auto lg:justify-end">
                         <Badge
                           className={cn(
                             "shrink-0",
@@ -685,40 +686,22 @@ export function AppointmentsManager() {
                         </Badge>
                         {isScheduled ? (
                           <>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              aria-label="Завершить запись"
-                              disabled={isActionLoading}
-                              onClick={() => runAppointmentAction(appointment.id, "complete")}
-                            >
-                              {isActionLoading ? <Clock className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Завершить запись" disabled={isActionLoading} onClick={() => runAppointmentAction(appointment.id, "complete")}>
+                              {isActionLoading ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              aria-label="Отменить запись"
-                              disabled={isActionLoading}
-                              onClick={() => runAppointmentAction(appointment.id, "cancel")}
-                            >
-                              {isActionLoading ? <Clock className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Отменить запись" disabled={isActionLoading} onClick={() => runAppointmentAction(appointment.id, "cancel")}>
+                              {isActionLoading ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              aria-label="Отметить неявку"
-                              disabled={isActionLoading}
-                              onClick={() => runAppointmentAction(appointment.id, "no_show")}
-                            >
-                              {isActionLoading ? <Clock className="h-4 w-4 animate-spin" /> : <UserX className="h-4 w-4" />}
+                            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Отметить неявку" disabled={isActionLoading} onClick={() => runAppointmentAction(appointment.id, "no_show")}>
+                              {isActionLoading ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <UserX className="h-3.5 w-3.5" />}
                             </Button>
                           </>
                         ) : null}
-                        <Button variant="ghost" size="icon" aria-label="Редактировать запись" onClick={() => openEditForm(appointment)}>
-                          <Pencil className="h-4 w-4" />
+                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Редактировать запись" onClick={() => openEditForm(appointment)}>
+                          <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="icon" aria-label="Удалить запись" onClick={() => setDeleteTarget(appointment)}>
-                          <XCircle className="h-4 w-4" />
+                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Удалить запись" onClick={() => setDeleteTarget(appointment)}>
+                          <XCircle className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
