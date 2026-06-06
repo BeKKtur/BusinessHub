@@ -37,6 +37,12 @@ type AdminSubscription = {
   plan: "free" | "pro" | "business";
   status: string;
   paddle_id: string | null;
+  paddle_subscription_id: string | null;
+  paddle_customer_id: string | null;
+  paddle_price_id: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  next_billed_at: string | null;
 };
 
 type AdminActivity = {
@@ -51,6 +57,25 @@ type AdminRevenue = {
   total: number;
   currency: string;
 };
+
+type GrantOption = "free" | "pro_30" | "pro_90" | "business_30" | "business_90" | "business_forever";
+type GrantReason = "Beta tester" | "Partner" | "Manual grant" | "Refund compensation" | "Other";
+
+const grantOptions: Array<{ value: GrantOption; label: string }> = [
+  { value: "free", label: "Give Free" },
+  { value: "pro_30", label: "Give Pro for 30 days" },
+  { value: "pro_90", label: "Give Pro for 90 days" },
+  { value: "business_30", label: "Give Business for 30 days" },
+  { value: "business_90", label: "Give Business for 90 days" },
+  { value: "business_forever", label: "Give Business forever" }
+];
+
+const grantReasons: GrantReason[] = ["Beta tester", "Partner", "Manual grant", "Refund compensation", "Other"];
+
+function formatDate(value: string | null) {
+  if (!value) return "Бессрочно";
+  return new Date(value).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
+}
 
 async function readAdminResource<T>(path: string, fallback: string) {
   const response = await fetch(path);
@@ -82,6 +107,7 @@ export function AdminManager() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<ToastNotice | undefined>();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [grantReasonsByUser, setGrantReasonsByUser] = useState<Record<string, GrantReason>>({});
 
   const adminQueryOptions = { staleTime: 60_000 };
   const usersQuery = useQuery({ queryKey: ["admin", "users"], queryFn: () => readAdminResource<AdminUser[]>("/api/admin/users", "Не удалось загрузить пользователей"), ...adminQueryOptions });
@@ -98,6 +124,14 @@ export function AdminManager() {
   const selectedBusinesses = useMemo(
     () => (selectedUserId ? (businessesQuery.data ?? []).filter((business) => business.owner_id === selectedUserId) : []),
     [businessesQuery.data, selectedUserId]
+  );
+  const businessByOwnerId = useMemo(
+    () => new Map((businessesQuery.data ?? []).map((business) => [business.owner_id, business])),
+    [businessesQuery.data]
+  );
+  const subscriptionByBusinessId = useMemo(
+    () => new Map((subscriptionsQuery.data ?? []).map((subscription) => [subscription.business_id, subscription])),
+    [subscriptionsQuery.data]
   );
 
   const blockMutation = useMutation({
@@ -121,8 +155,8 @@ export function AdminManager() {
   });
 
   const planMutation = useMutation({
-    mutationFn: ({ userId, plan }: { userId: string; plan: AdminSubscription["plan"] }) =>
-      postAdminAction<AdminSubscription>("/api/admin/change-plan", { userId, plan }, "Не удалось изменить план"),
+    mutationFn: ({ userId, grant, reason, confirmOverwrite }: { userId: string; grant: GrantOption; reason: GrantReason; confirmOverwrite: boolean }) =>
+      postAdminAction<AdminSubscription>("/api/admin/change-plan", { userId, grant, reason, confirmOverwrite }, "Не удалось изменить план"),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "subscriptions"] });
       void queryClient.invalidateQueries({ queryKey: ["admin", "activity"] });
@@ -153,6 +187,20 @@ export function AdminManager() {
   const businesses = businessesQuery.data ?? [];
   const subscriptions = subscriptionsQuery.data ?? [];
   const activity = activityQuery.data ?? [];
+
+  function changeManualGrant(user: AdminUser, grant: GrantOption) {
+    const business = businessByOwnerId.get(user.id);
+    const subscription = business ? subscriptionByBusinessId.get(business.id) : undefined;
+    const reason = grantReasonsByUser[user.id] ?? "Manual grant";
+    const hasPaddleSubscription = Boolean(subscription?.paddle_subscription_id);
+    const message = hasPaddleSubscription
+      ? `У ${user.email} есть Paddle-подписка (${subscription?.paddle_subscription_id}). Подтвердить ручное изменение плана?`
+      : `Подтвердить manual grant для ${user.email}?`;
+
+    if (!window.confirm(message)) return;
+
+    planMutation.mutate({ userId: user.id, grant, reason, confirmOverwrite: hasPaddleSubscription });
+  }
 
   return (
     <>
@@ -190,53 +238,85 @@ export function AdminManager() {
                   <TH>Email</TH>
                   <TH>Роль</TH>
                   <TH>Статус</TH>
+                  <TH>Подписка</TH>
                   <TH>Действия</TH>
                 </TR>
               </THead>
               <TBody>
-                {users.map((user) => (
-                  <TR key={user.id}>
-                    <TD>
-                      <div className="font-medium">{user.email}</div>
-                      <div className="text-xs text-muted-foreground">{user.full_name ?? "Без имени"}</div>
-                    </TD>
-                    <TD>{user.role}</TD>
-                    <TD>{user.blocked ? "blocked" : "active"}</TD>
-                    <TD>
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="ghost" size="icon" aria-label={`Посмотреть бизнес пользователя ${user.email}`} onClick={() => setSelectedUserId(user.id)}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {user.blocked ? (
-                          <Button variant="ghost" size="icon" aria-label={`Разблокировать пользователя ${user.email}`} onClick={() => unblockMutation.mutate(user.id)} disabled={unblockMutation.isPending}>
-                            <UserRoundCheck className="h-4 w-4" />
-                          </Button>
+                {users.map((user) => {
+                  const business = businessByOwnerId.get(user.id);
+                  const subscription = business ? subscriptionByBusinessId.get(business.id) : undefined;
+
+                  return (
+                    <TR key={user.id}>
+                      <TD>
+                        <div className="font-medium">{user.email}</div>
+                        <div className="text-xs text-muted-foreground">{user.full_name ?? "Без имени"}</div>
+                      </TD>
+                      <TD>{user.role}</TD>
+                      <TD>{user.blocked ? "blocked" : "active"}</TD>
+                      <TD>
+                        {subscription ? (
+                          <div className="space-y-1 text-xs">
+                            <div className="font-medium text-foreground">{subscription.plan} · {subscription.status}</div>
+                            <div className="text-muted-foreground">До: {formatDate(subscription.current_period_end)}</div>
+                            <div className="max-w-52 truncate text-muted-foreground" title={subscription.paddle_subscription_id ?? undefined}>
+                              Paddle: {subscription.paddle_subscription_id ?? "—"}
+                            </div>
+                          </div>
                         ) : (
-                          <Button variant="ghost" size="icon" aria-label={`Заблокировать пользователя ${user.email}`} onClick={() => blockMutation.mutate(user.id)} disabled={blockMutation.isPending || user.role === "super_admin"}>
-                            <Lock className="h-4 w-4" />
-                          </Button>
+                          <span className="text-xs text-muted-foreground">Нет подписки</span>
                         )}
-                        <select
-                          aria-label={`Изменить план ${user.email}`}
-                          className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                          defaultValue=""
-                          onChange={(event) => {
-                            if (event.target.value) {
-                              planMutation.mutate({ userId: user.id, plan: event.target.value as AdminSubscription["plan"] });
-                              event.target.value = "";
+                      </TD>
+                      <TD>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button variant="ghost" size="icon" aria-label={`Посмотреть бизнес пользователя ${user.email}`} onClick={() => setSelectedUserId(user.id)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {user.blocked ? (
+                            <Button variant="ghost" size="icon" aria-label={`Разблокировать пользователя ${user.email}`} onClick={() => unblockMutation.mutate(user.id)} disabled={unblockMutation.isPending}>
+                              <UserRoundCheck className="h-4 w-4" />
+                            </Button>
+                          ) : (
+                            <Button variant="ghost" size="icon" aria-label={`Заблокировать пользователя ${user.email}`} onClick={() => blockMutation.mutate(user.id)} disabled={blockMutation.isPending || user.role === "super_admin"}>
+                              <Lock className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <select
+                            aria-label={`Причина manual grant ${user.email}`}
+                            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                            value={grantReasonsByUser[user.id] ?? "Manual grant"}
+                            onChange={(event) =>
+                              setGrantReasonsByUser((current) => ({ ...current, [user.id]: event.target.value as GrantReason }))
                             }
-                          }}
-                          disabled={planMutation.isPending}
-                        >
-                          <option value="">План</option>
-                          <option value="free">Free</option>
-                          <option value="pro">Pro</option>
-                          <option value="business">Business</option>
-                        </select>
-                      </div>
-                    </TD>
-                  </TR>
-                ))}
+                          >
+                            {grantReasons.map((reason) => (
+                              <option key={reason} value={reason}>{reason}</option>
+                            ))}
+                          </select>
+                          <select
+                            aria-label={`Manual grant ${user.email}`}
+                            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                            defaultValue=""
+                            onChange={(event) => {
+                              const grant = event.target.value as GrantOption;
+                              if (grant) {
+                                changeManualGrant(user, grant);
+                                event.target.value = "";
+                              }
+                            }}
+                            disabled={planMutation.isPending}
+                          >
+                            <option value="">Grant plan</option>
+                            {grantOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </TD>
+                    </TR>
+                  );
+                })}
               </TBody>
             </Table>
           ) : (

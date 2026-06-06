@@ -12,7 +12,12 @@ export const adminUserActionSchema = z.object({
 
 export const adminChangePlanSchema = z.object({
   userId: z.string().uuid(),
-  plan: z.enum(["free", "pro", "business"])
+  plan: z.enum(["free", "pro", "business"]).optional(),
+  grant: z.enum(["free", "pro_30", "pro_90", "business_30", "business_90", "business_forever"]).optional(),
+  reason: z.enum(["Beta tester", "Partner", "Manual grant", "Refund compensation", "Other"]).default("Manual grant"),
+  confirmOverwrite: z.boolean().optional()
+}).refine((payload) => payload.plan || payload.grant, {
+  message: "Plan or grant option is required"
 });
 
 export type AdminContext =

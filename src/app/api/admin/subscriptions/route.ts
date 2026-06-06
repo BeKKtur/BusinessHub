@@ -7,7 +7,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await context.admin
     .from("subscriptions")
-    .select("id, business_id, plan, status, paddle_id, paddle_subscription_id, paddle_customer_id, paddle_price_id, next_billed_at")
+    .select("id, business_id, plan, status, paddle_id, paddle_subscription_id, paddle_customer_id, paddle_price_id, current_period_start, current_period_end, next_billed_at")
     .order("status", { ascending: true });
 
   if (error) {
