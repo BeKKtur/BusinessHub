@@ -8,8 +8,8 @@ import type { Client } from "@/types/database";
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type QueryError = { message: string };
 type QueryResult<T> = { data: T; error: null } | { data: null; error: QueryError };
-type ClientInsert = Omit<Client, "id" | "created_at" | "visits_count"> & { visits_count?: number };
-type ClientUpdate = Partial<Omit<Client, "id" | "business_id" | "created_at">>;
+type ClientInsert = Omit<Client, "id" | "created_at" | "visits_count" | "served_counted_at"> & { visits_count?: number };
+type ClientUpdate = Partial<Omit<Client, "id" | "business_id" | "created_at" | "served_counted_at">>;
 
 type BusinessesTable = {
   select: (columns: string) => {

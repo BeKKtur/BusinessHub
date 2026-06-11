@@ -12,6 +12,7 @@ export const clients: Client[] = [
     notes: "Предпочитает утренние записи",
     telegram: "@alina_m",
     visits_count: 8,
+    served_counted_at: null,
     created_at: "2026-06-01T09:00:00Z"
   },
   {
@@ -23,6 +24,7 @@ export const clients: Client[] = [
     notes: "VIP клиент",
     telegram: "@timur_s",
     visits_count: 14,
+    served_counted_at: null,
     created_at: "2026-05-22T09:00:00Z"
   },
   {
@@ -34,6 +36,7 @@ export const clients: Client[] = [
     notes: "Напоминать через Telegram",
     telegram: "777333111",
     visits_count: 3,
+    served_counted_at: null,
     created_at: "2026-05-29T09:00:00Z"
   }
 ];
@@ -84,6 +87,7 @@ export const appointments: Appointment[] = [
     ends_at: "2026-06-04T10:00:00Z",
     status: "scheduled",
     notes: null,
+    usage_counted_at: null,
     created_at: "2026-06-01T09:00:00Z"
   },
   {
@@ -95,6 +99,7 @@ export const appointments: Appointment[] = [
     ends_at: "2026-06-04T14:00:00Z",
     status: "scheduled",
     notes: "Подтверждено",
+    usage_counted_at: null,
     created_at: "2026-06-01T09:00:00Z"
   },
   {
@@ -106,6 +111,7 @@ export const appointments: Appointment[] = [
     ends_at: "2026-06-05T09:00:00Z",
     status: "no_show",
     notes: "Перенесено с четверга",
+    usage_counted_at: null,
     created_at: "2026-06-02T09:00:00Z"
   }
 ];

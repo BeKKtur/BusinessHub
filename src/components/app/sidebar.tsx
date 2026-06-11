@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { usePathname } from "next/navigation";
-import { Building2, LifeBuoy, PanelLeftClose, Zap } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Building2, LifeBuoy, LockKeyhole, PanelLeftClose, Zap } from "lucide-react";
 import { navItems } from "@/lib/constants";
 import { planDetails, type SubscriptionPlan } from "@/lib/plans";
 import { cn } from "@/lib/utils";
@@ -23,8 +23,16 @@ function formatRenewalDate(value?: string | null) {
   return new Date(value).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function getLockedReason(href: string, plan: SubscriptionPlan, role: SidebarProps["role"]) {
+  if (role === "super_admin") return null;
+  if ((href === "/finance" || href === "/analytics") && plan === "free") return "Pro";
+  if (href === "/telegram" && plan !== "business") return "Business";
+  return null;
+}
+
 export function Sidebar({ role = "user", plan = "free", subscriptionStatus = "active", nextBilledAt = null }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { sidebarOpen, setSidebarOpen } = useAppStore();
   const visibleNavItems = navItems.filter((item) => item.href !== "/admin" || role === "super_admin");
   const currentPlan = planDetails[plan];
@@ -61,18 +69,26 @@ export function Sidebar({ role = "user", plan = "free", subscriptionStatus = "ac
         <nav className="flex-1 space-y-1 px-3 py-4">
           {visibleNavItems.map((item) => {
             const active = pathname === item.href;
+            const lockedReason = getLockedReason(item.href, plan, role);
+            const href = (lockedReason ? "/billing" : item.href) as Route;
             return (
               <Link
                 key={item.href}
-                href={item.href as Route}
+                href={href}
+                prefetch
                 className={cn(
                   "flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors",
-                  active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  lockedReason && "opacity-75"
                 )}
                 onClick={() => setSidebarOpen(false)}
+                onFocus={() => router.prefetch(href)}
+                onMouseEnter={() => router.prefetch(href)}
+                title={lockedReason ? `Доступно на ${lockedReason}` : undefined}
               >
                 <item.icon className="h-4 w-4" />
-                {item.label}
+                <span className="min-w-0 flex-1">{item.label}</span>
+                {lockedReason ? <LockKeyhole className="h-3.5 w-3.5" aria-label={`Доступно на ${lockedReason}`} /> : null}
               </Link>
             );
           })}

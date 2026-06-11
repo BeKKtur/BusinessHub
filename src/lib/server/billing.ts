@@ -18,6 +18,8 @@ export type BillingStatus = {
   trial_ends_at: string | null;
   cancelled_at: string | null;
   portal_url: string | null;
+  served_clients_count: number;
+  completed_appointments_count: number;
 };
 
 type SupabaseLike = {
@@ -59,7 +61,6 @@ type LegacyPaddleClient = {
 
 type QueryError = { message: string };
 type MaybeSingleResult = Promise<{ data: unknown; error: QueryError | null }>;
-type CountResult = Promise<{ count: number | null; error: QueryError | null }>;
 type SubscriptionTable = {
   select: (columns: string) => {
     eq: (column: "business_id", value: string) => {
@@ -70,7 +71,13 @@ type SubscriptionTable = {
   };
 };
 type SubscriptionInsertTable = {
-  insert: (payload: { business_id: string; plan: "free"; status: "active" }) => MaybeSingleResult;
+  insert: (payload: {
+    business_id: string;
+    plan: "free";
+    status: "active";
+    served_clients_count?: number;
+    completed_appointments_count?: number;
+  }) => MaybeSingleResult;
 };
 type BusinessOwnerTable = {
   select: (columns: string) => {
@@ -81,12 +88,6 @@ type BusinessOwnerTable = {
     };
   };
 };
-type CountTable = {
-  select: (columns: string, options: { count: "exact"; head: true }) => {
-    eq: (column: "business_id", value: string) => CountResult;
-  };
-};
-
 export const checkoutPlans = ["pro", "business"] as const;
 export type CheckoutPlan = (typeof checkoutPlans)[number];
 
@@ -254,7 +255,9 @@ export function subscriptionDefaults(subscription?: Partial<BillingStatus> | nul
     next_billed_at: subscription?.next_billed_at ?? null,
     trial_ends_at: subscription?.trial_ends_at ?? null,
     cancelled_at: subscription?.cancelled_at ?? null,
-    portal_url: subscription?.portal_url ?? null
+    portal_url: subscription?.portal_url ?? null,
+    served_clients_count: subscription?.served_clients_count ?? 0,
+    completed_appointments_count: subscription?.completed_appointments_count ?? 0
   };
 }
 
@@ -279,7 +282,9 @@ async function createFreeSubscriptionIfMissing(businessId: string) {
   const { error } = await subscriptionTable.insert({
     business_id: businessId,
     plan: "free",
-    status: "active"
+    status: "active",
+    served_clients_count: 0,
+    completed_appointments_count: 0
   });
 
   if (error) {
@@ -304,7 +309,7 @@ export async function getBusinessSubscription(supabase: SupabaseLike, businessId
   const table = supabase.from("subscriptions") as SubscriptionTable;
   const { data, error } = await table
     .select(
-      "plan, status, paddle_id, paddle_subscription_id, paddle_customer_id, paddle_price_id, current_period_end, next_billed_at, trial_ends_at, cancelled_at, portal_url"
+      "plan, status, paddle_id, paddle_subscription_id, paddle_customer_id, paddle_price_id, current_period_end, next_billed_at, trial_ends_at, cancelled_at, portal_url, served_clients_count, completed_appointments_count"
     )
     .eq("business_id", businessId)
     .limit(1)
@@ -333,18 +338,6 @@ export async function getBusinessSubscription(supabase: SupabaseLike, businessId
   return subscription;
 }
 
-async function countRows(supabase: SupabaseLike, table: string, businessId: string) {
-  const query = supabase.from(table) as CountTable;
-  const { count, error } = await query.select("id", { count: "exact", head: true }).eq("business_id", businessId);
-
-  if (error) {
-    console.error("[billing.limits.count]", { table, message: error.message });
-    throw new Error("Failed to check plan limits");
-  }
-
-  return count ?? 0;
-}
-
 export async function enforcePlanLimit(
   supabase: SupabaseLike,
   businessId: string,
@@ -358,12 +351,12 @@ export async function enforcePlanLimit(
     return null;
   }
 
-  const currentCount = await countRows(supabase, resource, businessId);
+  const currentCount = resource === "clients" ? subscription.served_clients_count : subscription.completed_appointments_count;
   if (currentCount < limit) {
     return null;
   }
 
-  const resourceLabel = resource === "clients" ? "клиентов" : "записей";
+  const resourceLabel = resource === "clients" ? "обслуженных клиентов" : "завершённых записей";
   return NextResponse.json(
     {
       error: `Достигнут лимит тарифа ${limits.label}: ${limit} ${resourceLabel}. Перейдите на более высокий тариф, чтобы продолжить.`,

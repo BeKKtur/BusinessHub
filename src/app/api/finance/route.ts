@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiError, getSupabaseEnvStatus, parseJson, supabaseConfigErrorResponse } from "@/lib/api";
+import { featureUpgradeResponse, getFeatureAccess } from "@/lib/server/feature-access";
 import { createClient } from "@/lib/supabase/server";
 import { financeOperationDeleteSchema, financeOperationSchema, financeOperationUpdateSchema } from "@/lib/validators";
 import type { Database } from "@/types/database";
@@ -80,6 +81,11 @@ async function getSupabaseContext() {
 
   if (businessError || !business) {
     return { error: NextResponse.json({ error: "Business workspace not found" }, { status: 404 }) };
+  }
+
+  const access = await getFeatureAccess(supabase, business.id, user.id, "finance");
+  if (!access.allowed) {
+    return { error: featureUpgradeResponse(access) };
   }
 
   return { supabase, businessId: business.id };

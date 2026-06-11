@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
-import { getAnalyticsData } from "@/lib/server/business-data";
+import { getAnalyticsData, getBusinessContext } from "@/lib/server/business-data";
+import { featureUpgradeResponse, getFeatureAccess } from "@/lib/server/feature-access";
 
 export async function GET() {
+  const contextResult = await getBusinessContext();
+  if (contextResult.error) {
+    return NextResponse.json({ error: contextResult.error.error }, { status: contextResult.error.status });
+  }
+
+  if (!contextResult.context.e2e) {
+    const access = await getFeatureAccess(contextResult.context.supabase, contextResult.context.businessId, contextResult.context.userId, "analytics");
+    if (!access.allowed) return featureUpgradeResponse(access);
+  }
+
   const result = await getAnalyticsData();
 
   if (result.error) {

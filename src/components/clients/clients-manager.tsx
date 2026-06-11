@@ -97,7 +97,7 @@ export function ClientsManager() {
   const clientsQuery = useQuery({
     queryKey: ["clients"],
     queryFn: fetchClients,
-    staleTime: 120_000
+    staleTime: 60_000
   });
 
   useEffect(() => {
@@ -353,7 +353,7 @@ export function ClientsManager() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                На Free можно хранить до 50 клиентов. Перейдите на Pro или Business, чтобы продолжить рост базы.
+                На Free можно иметь до 50 обслуженных клиентов. Перейдите на Pro или Business, чтобы продолжить рост базы.
               </p>
               <div className="mt-6 flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setUpgradeOpen(false)}>

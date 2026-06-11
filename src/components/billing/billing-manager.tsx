@@ -156,7 +156,7 @@ export function BillingManager() {
   const statusQuery = useQuery({
     queryKey: ["billing-status"],
     queryFn: fetchBillingStatus,
-    staleTime: 120_000
+    staleTime: 300_000
   });
 
   async function startCheckout(planName: keyof typeof planSlugs) {
@@ -284,7 +284,7 @@ export function BillingManager() {
             <span className="font-medium text-foreground">{formatDate(currentStatus.current_period_end ?? currentStatus.next_billed_at)}</span>
           </div>
           <div className="mt-2">
-            Лимиты: клиенты {formatLimit(currentPlan.clientLimit)}, записи {formatLimit(currentPlan.appointmentLimit)}
+            Лимиты: обслуженные клиенты {formatLimit(currentPlan.clientLimit)}, завершённые записи {formatLimit(currentPlan.appointmentLimit)}
           </div>
           <div className="mt-2">Если возникли вопросы по оплате, свяжитесь с поддержкой.</div>
           {currentStatus.plan !== "free" ? (
@@ -304,13 +304,13 @@ export function BillingManager() {
           <div className="text-sm font-medium">Использование</div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-md border bg-background p-3">
-              <div className="text-xs text-muted-foreground">Клиенты</div>
+              <div className="text-xs text-muted-foreground">Обслуженные клиенты</div>
               <div className="mt-1 text-xl font-semibold">
                 {currentStatus.usage.clients} / {formatLimit(currentPlan.clientLimit)}
               </div>
             </div>
             <div className="rounded-md border bg-background p-3">
-              <div className="text-xs text-muted-foreground">Записи</div>
+              <div className="text-xs text-muted-foreground">Завершённые записи</div>
               <div className="mt-1 text-xl font-semibold">
                 {currentStatus.usage.appointments} / {formatLimit(currentPlan.appointmentLimit)}
               </div>

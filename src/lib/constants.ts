@@ -26,19 +26,19 @@ export const plans = [
     name: "Free",
     price: "$0",
     description: "Для старта и проверки процесса",
-    features: ["50 clients", "100 appointments", "Базовый dashboard"]
+    features: ["50 обслуженных клиентов", "50 завершённых записей", "Базовый dashboard"]
   },
   {
     name: "Pro",
     price: "$10",
     description: "Для растущего сервиса",
-    features: ["Unlimited clients", "Unlimited appointments", "Finance analytics"]
+    features: ["500 обслуженных клиентов", "500 завершённых записей", "Финансовая аналитика"]
   },
   {
     name: "Business",
     price: "$20",
     description: "Для системной автоматизации",
-    features: ["Все из Pro", "Telegram automation", "Advanced analytics"]
+    features: ["Безлимитные обслуженные клиенты", "Безлимитные завершённые записи", "Telegram-автоматизация", "Продвинутая аналитика"]
   }
 ] as const;
 

@@ -15,27 +15,27 @@ export const planDetails: Record<
 > = {
   free: {
     label: "Free",
-    clients: "50 клиентов",
-    appointments: "100 записей",
+    clients: "50 обслуженных клиентов",
+    appointments: "50 завершённых записей",
     clientLimit: 50,
-    appointmentLimit: 100,
-    features: ["До 50 клиентов", "До 100 записей", "Базовый dashboard"]
+    appointmentLimit: 50,
+    features: ["50 обслуженных клиентов", "50 завершённых записей", "Базовый dashboard"]
   },
   pro: {
     label: "Pro",
-    clients: "500 клиентов",
-    appointments: "500 записей",
+    clients: "500 обслуженных клиентов",
+    appointments: "500 завершённых записей",
     clientLimit: 500,
     appointmentLimit: 500,
-    features: ["До 500 клиентов", "До 500 записей", "Финансовая аналитика"]
+    features: ["500 обслуженных клиентов", "500 завершённых записей", "Финансовая аналитика"]
   },
   business: {
     label: "Business",
-    clients: "Безлимитные клиенты",
-    appointments: "Безлимитные записи",
+    clients: "Безлимитные обслуженные клиенты",
+    appointments: "Безлимитные завершённые записи",
     clientLimit: "unlimited",
     appointmentLimit: "unlimited",
-    features: ["Все из Pro", "Telegram automation", "Расширенная аналитика"]
+    features: ["Безлимитные обслуженные клиенты", "Безлимитные завершённые записи", "Telegram-автоматизация", "Продвинутая аналитика"]
   }
 };
 

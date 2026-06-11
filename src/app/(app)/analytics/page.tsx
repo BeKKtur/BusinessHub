@@ -1,11 +1,35 @@
 import { BarChart3 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
+import { FeatureUpgradeCard } from "@/components/billing/feature-upgrade-card";
 import { RevenueChart } from "@/components/charts/revenue-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getAnalyticsData } from "@/lib/server/business-data";
+import { getAnalyticsData, getBusinessContext } from "@/lib/server/business-data";
+import { getFeatureAccess } from "@/lib/server/feature-access";
 
 export default async function AnalyticsPage() {
+  const contextResult = await getBusinessContext();
+  if (contextResult.error) {
+    return (
+      <>
+        <PageHeader title="Аналитика" description="Новые и повторные клиенты, прибыльные услуги, доход по месяцам и конверсия записей." />
+        <FeatureUpgradeCard title="Аналитика недоступна" description={contextResult.error.error} />
+      </>
+    );
+  }
+
+  if (!contextResult.context.e2e) {
+    const access = await getFeatureAccess(contextResult.context.supabase, contextResult.context.businessId, contextResult.context.userId, "analytics");
+    if (!access.allowed) {
+      return (
+        <>
+          <PageHeader title="Аналитика" description="Новые и повторные клиенты, прибыльные услуги, доход по месяцам и конверсия записей." />
+          <FeatureUpgradeCard title={access.title} description={access.description} />
+        </>
+      );
+    }
+  }
+
   const result = await getAnalyticsData();
 
   if (result.error) {

@@ -31,7 +31,13 @@ export function Topbar() {
         <Input className="max-w-md pl-9" placeholder="Поиск клиентов, записей, услуг" />
       </div>
       <div className="ml-auto flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={handleNewAppointment}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleNewAppointment}
+          onFocus={() => router.prefetch("/appointments")}
+          onMouseEnter={() => router.prefetch("/appointments")}
+        >
           <Plus className="h-4 w-4" />
           Новая запись
         </Button>

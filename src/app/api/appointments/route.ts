@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError, getSupabaseEnvStatus, parseJson, supabaseConfigErrorResponse } from "@/lib/api";
-import { enforcePlanLimit } from "@/lib/server/billing";
+import { enforcePlanLimit, getBusinessSubscription } from "@/lib/server/billing";
+import { formatLimit, planDetails } from "@/lib/plans";
 import { createClient } from "@/lib/supabase/server";
 import { appointmentDeleteSchema, appointmentSchema, appointmentStatusActionSchema, appointmentUpdateSchema } from "@/lib/validators";
 import type { Appointment, AppointmentStatus, Client, Revenue, Service } from "@/types/database";
@@ -8,11 +9,11 @@ import type { Appointment, AppointmentStatus, Client, Revenue, Service } from "@
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type QueryError = { message: string };
 type QueryResult<T> = { data: T; error: null } | { data: null; error: QueryError };
-type AppointmentInsert = Omit<Appointment, "id" | "created_at">;
-type AppointmentUpdate = Partial<Omit<Appointment, "id" | "business_id" | "created_at">>;
+type AppointmentInsert = Omit<Appointment, "id" | "created_at" | "usage_counted_at">;
+type AppointmentUpdate = Partial<Omit<Appointment, "id" | "business_id" | "created_at" | "usage_counted_at">>;
 type AppointmentConflictRow = Pick<Appointment, "id">;
 type ServiceStatusRow = { id: string; active: boolean; name?: string; price?: number };
-type ClientExistsRow = { id: string };
+type ClientExistsRow = Pick<Client, "id" | "served_counted_at">;
 type AppointmentDetailsRow = Appointment;
 type RevenueInsert = Omit<Revenue, "id" | "created_at">;
 type AppointmentClientDetails = Pick<Client, "id" | "name" | "phone" | "email">;
@@ -20,6 +21,16 @@ type AppointmentServiceDetails = Pick<Service, "id" | "name" | "price" | "durati
 type AppointmentWithDetails = Appointment & {
   client: AppointmentClientDetails | null;
   service: AppointmentServiceDetails | null;
+};
+type UsageCounterResult = {
+  served_client_counted: boolean;
+  completed_appointment_counted: boolean;
+};
+type UsageRpcClient = {
+  rpc: (
+    functionName: "record_completed_appointment_usage",
+    args: { p_business_id: string; p_appointment_id: string; p_client_id: string }
+  ) => Promise<QueryResult<UsageCounterResult[]>>;
 };
 
 type BusinessesTable = {
@@ -172,6 +183,10 @@ function servicesLookupTable(supabase: SupabaseServerClient) {
   return supabase.from("services") as unknown as ServicesLookupTable;
 }
 
+function usageRpcClient(supabase: SupabaseServerClient) {
+  return supabase as unknown as UsageRpcClient;
+}
+
 function isMissingRevenueAppointmentLink(error: QueryError) {
   return /appointment_id|schema cache|column/i.test(error.message);
 }
@@ -249,13 +264,78 @@ async function getServiceForRevenue(context: { supabase: SupabaseServerClient; b
 
 async function ensureClientExists(context: { supabase: SupabaseServerClient; businessId: string }, clientId: string) {
   const { data, error } = await clientsStatusTable(context.supabase)
-    .select("id")
+    .select("id, served_counted_at")
     .eq("business_id", context.businessId)
     .eq("id", clientId)
     .limit(1);
 
   if (error || !data?.length) {
     return NextResponse.json({ error: "Client not found" }, { status: 404 });
+  }
+
+  return null;
+}
+
+async function getClientUsageStatus(context: { supabase: SupabaseServerClient; businessId: string }, clientId: string) {
+  const { data, error } = await clientsStatusTable(context.supabase)
+    .select("id, served_counted_at")
+    .eq("business_id", context.businessId)
+    .eq("id", clientId)
+    .limit(1);
+
+  if (error || !data?.length) {
+    return { error: NextResponse.json({ error: "Client not found" }, { status: 404 }) };
+  }
+
+  return { client: data[0] };
+}
+
+async function ensureCompletionLimitAvailable(
+  context: { supabase: SupabaseServerClient; businessId: string },
+  options: { clientId: string; appointmentUsageCountedAt?: string | null }
+) {
+  const subscription = await getBusinessSubscription(context.supabase, context.businessId);
+  const limits = planDetails[subscription.plan];
+  const appointmentLimit = limits.appointmentLimit;
+  const clientLimit = limits.clientLimit;
+
+  if (
+    appointmentLimit !== "unlimited" &&
+    !options.appointmentUsageCountedAt &&
+    subscription.completed_appointments_count >= appointmentLimit
+  ) {
+    return NextResponse.json(
+      {
+        error: `Достигнут лимит тарифа ${limits.label}: ${formatLimit(appointmentLimit)} завершённых записей. Перейдите на более высокий тариф, чтобы продолжить.`,
+        code: "PLAN_LIMIT_REACHED",
+        upgradeRequired: true,
+        plan: subscription.plan,
+        limit: appointmentLimit,
+        currentCount: subscription.completed_appointments_count
+      },
+      { status: 402 }
+    );
+  }
+
+  if (clientLimit === "unlimited") {
+    return null;
+  }
+
+  const clientResult = await getClientUsageStatus(context, options.clientId);
+  if (clientResult.error) return clientResult.error;
+
+  if (!clientResult.client.served_counted_at && subscription.served_clients_count >= clientLimit) {
+    return NextResponse.json(
+      {
+        error: `Достигнут лимит тарифа ${limits.label}: ${formatLimit(clientLimit)} обслуженных клиентов. Перейдите на более высокий тариф, чтобы продолжить.`,
+        code: "PLAN_LIMIT_REACHED",
+        upgradeRequired: true,
+        plan: subscription.plan,
+        limit: clientLimit,
+        currentCount: subscription.served_clients_count
+      },
+      { status: 402 }
+    );
   }
 
   return null;
@@ -324,6 +404,88 @@ async function ensureTimeAvailable(
   return null;
 }
 
+async function createCompletionSideEffects(
+  context: { supabase: SupabaseServerClient; businessId: string },
+  appointment: Appointment
+) {
+  const serviceResult = await getServiceForRevenue(context, appointment.service_id);
+  if (serviceResult.error) return { error: serviceResult.error };
+
+  const { data: existingRevenue, error: existingRevenueError } = await revenuesTable(context.supabase)
+    .select("id")
+    .eq("business_id", context.businessId)
+    .eq("appointment_id", appointment.id)
+    .limit(1);
+
+  if (existingRevenueError) {
+    console.error("[appointments.status.revenueCheck]", { message: existingRevenueError.message });
+    if (isMissingRevenueAppointmentLink(existingRevenueError)) {
+      return { error: revenueAppointmentLinkError() };
+    }
+
+    return { error: NextResponse.json({ error: "Failed to check appointment revenue" }, { status: 500 }) };
+  }
+
+  const { error: usageError } = await usageRpcClient(context.supabase).rpc("record_completed_appointment_usage", {
+    p_business_id: context.businessId,
+    p_appointment_id: appointment.id,
+    p_client_id: appointment.client_id
+  });
+
+  if (usageError) {
+    console.error("[appointments.status.usage]", { message: usageError.message });
+    if (/limit reached/i.test(usageError.message)) {
+      return {
+        error: NextResponse.json(
+          {
+            error: "Достигнут лимит тарифа. Перейдите на более высокий тариф, чтобы продолжить.",
+            code: "PLAN_LIMIT_REACHED",
+            upgradeRequired: true
+          },
+          { status: 402 }
+        )
+      };
+    }
+
+    return {
+      error: NextResponse.json(
+        {
+          error:
+            "Не удалось обновить лимиты тарифа. Примените migration supabase/migrations/016_persistent_usage_limits.sql и повторите действие."
+        },
+        { status: 503 }
+      )
+    };
+  }
+
+  if (existingRevenue?.length) {
+    return { revenue: null };
+  }
+
+  const { data: revenue, error: revenueError } = await revenuesTable(context.supabase)
+    .insert({
+      business_id: context.businessId,
+      appointment_id: appointment.id,
+      amount: Number(serviceResult.service.price ?? 0),
+      category: "Оплата за услугу",
+      description: serviceResult.service.name ? `Оплата за услугу: ${serviceResult.service.name}` : "Оплата за услугу",
+      occurred_at: appointment.starts_at
+    })
+    .select("*")
+    .single();
+
+  if (revenueError || !revenue) {
+    console.error("[appointments.status.revenue]", { message: revenueError?.message ?? "No revenue returned" });
+    if (revenueError && isMissingRevenueAppointmentLink(revenueError)) {
+      return { error: revenueAppointmentLinkError() };
+    }
+
+    return { error: NextResponse.json({ error: "Failed to create appointment revenue" }, { status: 500 }) };
+  }
+
+  return { revenue };
+}
+
 export async function GET(request: Request) {
   const context = await getSupabaseContext();
   if (context.error) return context.error;
@@ -368,6 +530,14 @@ export async function POST(request: Request) {
       if (timeError) return timeError;
     }
 
+    if (payload.status === "completed") {
+      const completionLimitError = await ensureCompletionLimitAvailable(context, {
+        clientId: payload.client_id,
+        appointmentUsageCountedAt: null
+      });
+      if (completionLimitError) return completionLimitError;
+    }
+
     const { data, error } = await appointmentsTable(context.supabase)
       .insert({
         ...payload,
@@ -380,6 +550,11 @@ export async function POST(request: Request) {
     if (error) {
       console.error("[appointments.post]", { message: error.message });
       return NextResponse.json({ error: "Failed to create appointment" }, { status: 500 });
+    }
+
+    if (data.status === "completed") {
+      const sideEffects = await createCompletionSideEffects(context, data);
+      if (sideEffects.error) return sideEffects.error;
     }
 
     const [hydratedAppointment] = await hydrateAppointments(context, data ? [data] : []);
@@ -418,6 +593,25 @@ export async function PATCH(request: Request) {
       if (timeError) return timeError;
     }
 
+    if (updates.status === "completed") {
+      const { data: existingAppointment, error: existingAppointmentError } = await appointmentDetailsTable(context.supabase)
+        .select("*")
+        .eq("business_id", context.businessId)
+        .eq("id", id)
+        .limit(1)
+        .single();
+
+      if (existingAppointmentError || !existingAppointment) {
+        return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
+      }
+
+      const completionLimitError = await ensureCompletionLimitAvailable(context, {
+        clientId: updates.client_id ?? existingAppointment.client_id,
+        appointmentUsageCountedAt: existingAppointment.usage_counted_at
+      });
+      if (completionLimitError) return completionLimitError;
+    }
+
     const updatePayload: AppointmentUpdate = {
       ...updates,
       ...(Object.prototype.hasOwnProperty.call(updates, "notes") ? { notes: updates.notes || null } : {})
@@ -432,6 +626,11 @@ export async function PATCH(request: Request) {
     if (error) {
       console.error("[appointments.patch]", { message: error.message });
       return NextResponse.json({ error: "Failed to update appointment" }, { status: 500 });
+    }
+
+    if (data.status === "completed") {
+      const sideEffects = await createCompletionSideEffects(context, data);
+      if (sideEffects.error) return sideEffects.error;
     }
 
     const [hydratedAppointment] = await hydrateAppointments(context, data ? [data] : []);
@@ -467,6 +666,12 @@ async function updateAppointmentStatus(
     if (appointment.status !== "scheduled") {
       return NextResponse.json({ error: "Завершить можно только запланированную запись." }, { status: 422 });
     }
+
+    const completionLimitError = await ensureCompletionLimitAvailable(context, {
+      clientId: appointment.client_id,
+      appointmentUsageCountedAt: appointment.usage_counted_at
+    });
+    if (completionLimitError) return completionLimitError;
 
     const { data: existingRevenue, error: existingRevenueError } = await revenuesTable(context.supabase)
       .select("id")
@@ -505,32 +710,11 @@ async function updateAppointmentStatus(
     return NextResponse.json({ data: hydratedAppointment ?? updatedAppointment, meta: { source: "supabase" } });
   }
 
-  const serviceResult = await getServiceForRevenue(context, updatedAppointment.service_id);
-  if (serviceResult.error) return serviceResult.error;
-
-  const { data: revenue, error: revenueError } = await revenuesTable(context.supabase)
-    .insert({
-      business_id: context.businessId,
-      appointment_id: updatedAppointment.id,
-      amount: Number(serviceResult.service.price ?? 0),
-      category: "Оплата за услугу",
-      description: serviceResult.service.name ? `Оплата за услугу: ${serviceResult.service.name}` : "Оплата за услугу",
-      occurred_at: updatedAppointment.starts_at
-    })
-    .select("*")
-    .single();
-
-  if (revenueError || !revenue) {
-    console.error("[appointments.status.revenue]", { message: revenueError?.message ?? "No revenue returned" });
-    if (revenueError && isMissingRevenueAppointmentLink(revenueError)) {
-      return revenueAppointmentLinkError();
-    }
-
-    return NextResponse.json({ error: "Failed to create appointment revenue" }, { status: 500 });
-  }
+  const sideEffects = await createCompletionSideEffects(context, updatedAppointment);
+  if (sideEffects.error) return sideEffects.error;
 
   const [hydratedAppointment] = await hydrateAppointments(context, [updatedAppointment]);
-  return NextResponse.json({ data: hydratedAppointment ?? updatedAppointment, revenue, meta: { source: "supabase" } });
+  return NextResponse.json({ data: hydratedAppointment ?? updatedAppointment, revenue: sideEffects.revenue, meta: { source: "supabase" } });
 }
 
 export async function DELETE(request: Request) {

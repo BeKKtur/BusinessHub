@@ -13,16 +13,6 @@ type PaymentRow = {
   created_at: string;
 };
 
-async function countRows(supabase: Awaited<ReturnType<typeof createClient>>, table: "clients" | "appointments", businessId: string) {
-  const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true }).eq("business_id", businessId);
-  if (error) {
-    console.error("[billing.status.usage]", { table, message: error.message });
-    throw new Error("Failed to load billing usage");
-  }
-
-  return count ?? 0;
-}
-
 export async function GET() {
   const envStatus = getSupabaseEnvStatus();
   if (envStatus.missingEnv.length || envStatus.placeholderEnv.length || envStatus.invalidEnv.length) {
@@ -53,9 +43,7 @@ export async function GET() {
 
   try {
     const subscription = await getBusinessSubscription(supabase, business.id);
-    const [clientsUsed, appointmentsUsed, paymentsResult] = await Promise.all([
-      countRows(supabase, "clients", business.id),
-      countRows(supabase, "appointments", business.id),
+    const [paymentsResult] = await Promise.all([
       supabase
         .from("payments")
         .select("id, amount, currency, status, paddle_transaction_id, created_at")
@@ -73,8 +61,8 @@ export async function GET() {
       data: {
         ...subscription,
         usage: {
-          clients: clientsUsed,
-          appointments: appointmentsUsed
+          clients: subscription.served_clients_count,
+          appointments: subscription.completed_appointments_count
         },
         payments: (paymentsResult.data ?? []) as PaymentRow[]
       }

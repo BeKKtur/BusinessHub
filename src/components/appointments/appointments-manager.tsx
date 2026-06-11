@@ -419,19 +419,19 @@ export function AppointmentsManager() {
   const appointmentsQuery = useQuery({
     queryKey: ["appointments", selectedMonth.key],
     queryFn: () => fetchAppointments(selectedMonth.from, selectedMonth.to),
-    staleTime: 60_000
+    staleTime: 30_000
   });
 
   const clientsQuery = useQuery({
     queryKey: ["clients"],
     queryFn: fetchClients,
-    staleTime: 120_000
+    staleTime: 60_000
   });
 
   const servicesQuery = useQuery({
     queryKey: ["services"],
     queryFn: fetchServices,
-    staleTime: 120_000
+    staleTime: 60_000
   });
 
   const appointments = useMemo(() => appointmentsQuery.data ?? [], [appointmentsQuery.data]);
@@ -939,7 +939,7 @@ export function AppointmentsManager() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                На Free можно создать до 100 записей. Перейдите на Pro или Business, чтобы продолжить запись клиентов.
+                На Free можно иметь до 50 завершённых записей. Перейдите на Pro или Business, чтобы продолжить запись клиентов.
               </p>
               <div className="mt-6 flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setUpgradeOpen(false)}>

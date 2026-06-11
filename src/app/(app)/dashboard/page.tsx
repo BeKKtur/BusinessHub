@@ -57,13 +57,13 @@ export default async function DashboardPage() {
             <div className="mt-1 text-sm font-medium">{billing.limits.label} · {billing.status}</div>
           </div>
           <div>
-            <div className="text-xs uppercase text-muted-foreground">Клиенты</div>
+            <div className="text-xs uppercase text-muted-foreground">Обслуженные клиенты</div>
             <div className="mt-1 text-sm font-medium">
               {billing.usage.clients} / {formatLimit(billing.limits.clientLimit)}
             </div>
           </div>
           <div>
-            <div className="text-xs uppercase text-muted-foreground">Записи</div>
+            <div className="text-xs uppercase text-muted-foreground">Завершённые записи</div>
             <div className="mt-1 text-sm font-medium">
               {billing.usage.appointments} / {formatLimit(billing.limits.appointmentLimit)}
             </div>
@@ -74,8 +74,8 @@ export default async function DashboardPage() {
         <Card className="mb-4 border-amber-500/30 bg-amber-500/5">
           <CardContent className="pt-5 text-sm text-amber-700 dark:text-amber-300">
             Вы приближаетесь к лимиту тарифа {billing.limits.label}.{" "}
-            {closeToClientLimit ? `Клиенты: ${billing.usage.clients}/${formatLimit(clientLimit)}. ` : null}
-            {closeToAppointmentLimit ? `Записи: ${billing.usage.appointments}/${formatLimit(appointmentLimit)}. ` : null}
+            {closeToClientLimit ? `Обслуженные клиенты: ${billing.usage.clients}/${formatLimit(clientLimit)}. ` : null}
+            {closeToAppointmentLimit ? `Завершённые записи: ${billing.usage.appointments}/${formatLimit(appointmentLimit)}. ` : null}
             Обновите тариф, чтобы не останавливать работу.
           </CardContent>
         </Card>

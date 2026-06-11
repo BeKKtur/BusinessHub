@@ -90,7 +90,7 @@ export function ServicesManager() {
   const servicesQuery = useQuery({
     queryKey: ["services"],
     queryFn: fetchServices,
-    staleTime: 120_000
+    staleTime: 60_000
   });
 
   const services = servicesQuery.data ?? [];

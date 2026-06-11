@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { CalendarPlus, ChevronDown, DollarSign, Scissors, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -15,6 +16,7 @@ const actions = [
 
 export function DashboardQuickActions() {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
 
   return (
     <div className="relative">
@@ -28,8 +30,11 @@ export function DashboardQuickActions() {
             <Link
               key={action.href}
               href={action.href as Route}
+              prefetch
               className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted"
               role="menuitem"
+              onFocus={() => router.prefetch(action.href as Route)}
+              onMouseEnter={() => router.prefetch(action.href as Route)}
               onClick={() => setOpen(false)}
             >
               <action.icon className="h-4 w-4 text-primary" />

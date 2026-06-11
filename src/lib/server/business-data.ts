@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { cache } from "react";
 import { getSupabaseServerEnvStatus } from "@/lib/env";
 import { getBusinessSubscription } from "@/lib/server/billing";
 import { planDetails, type SubscriptionPlan } from "@/lib/plans";
@@ -41,8 +42,8 @@ export type BusinessDataError = {
 };
 
 type BusinessContext =
-  | { supabase: SupabaseClient; businessId: string; e2e: false }
-  | { supabase: null; businessId: "e2e-business"; e2e: true };
+  | { supabase: SupabaseClient; businessId: string; userId: string; e2e: false }
+  | { supabase: null; businessId: "e2e-business"; userId: "e2e-user"; e2e: true };
 
 const monthFormatter = new Intl.DateTimeFormat("ru-RU", { month: "short" });
 
@@ -56,10 +57,12 @@ async function isE2EBypassRequest() {
 }
 
 function emptyContext(): BusinessContext {
-  return { supabase: null, businessId: "e2e-business", e2e: true };
+  return { supabase: null, businessId: "e2e-business", userId: "e2e-user", e2e: true };
 }
 
-export async function getBusinessContext(): Promise<{ context: BusinessContext; error: null } | { context: null; error: BusinessDataError }> {
+export const getBusinessContext = cache(async function getBusinessContext(): Promise<
+  { context: BusinessContext; error: null } | { context: null; error: BusinessDataError }
+> {
   if (await isE2EBypassRequest()) {
     return { context: emptyContext(), error: null };
   }
@@ -105,8 +108,8 @@ export async function getBusinessContext(): Promise<{ context: BusinessContext; 
     return { context: null, error: { error: "Business workspace not found", status: 404 } };
   }
 
-  return { context: { supabase, businessId: businessRow.id, e2e: false }, error: null };
-}
+  return { context: { supabase, businessId: businessRow.id, userId: user.id, e2e: false }, error: null };
+});
 
 function sumMoney(rows: Array<Pick<MoneyRow, "amount"> | Pick<ExpenseRow, "amount">>) {
   return rows.reduce((total, row) => total + Number(row.amount), 0);
@@ -182,10 +185,9 @@ export async function getDashboardData() {
   }
 
   const { todayStart, todayEnd, monthStart } = getDateRange();
-  const [clientsCountResult, appointmentsCountResult, clientsResult, servicesResult, appointmentsResult, todayRevenueResult, monthRevenueResult, monthExpensesResult] =
+  const [clientsCountResult, clientsResult, servicesResult, appointmentsResult, todayRevenueResult, monthRevenueResult, monthExpensesResult] =
     await Promise.all([
       context.supabase.from("clients").select("id", { count: "exact", head: true }).eq("business_id", context.businessId),
-      context.supabase.from("appointments").select("id", { count: "exact", head: true }).eq("business_id", context.businessId),
       context.supabase.from("clients").select("id, name, created_at").eq("business_id", context.businessId).order("created_at", { ascending: false }).limit(4),
       context.supabase.from("services").select("id, name, created_at").eq("business_id", context.businessId).order("created_at", { ascending: false }).limit(4),
       context.supabase
@@ -205,7 +207,7 @@ export async function getDashboardData() {
       context.supabase.from("expenses").select("*").eq("business_id", context.businessId).gte("occurred_at", monthStart)
     ]);
 
-  const failed = [clientsCountResult, appointmentsCountResult, clientsResult, servicesResult, appointmentsResult, todayRevenueResult, monthRevenueResult, monthExpensesResult].find(
+  const failed = [clientsCountResult, clientsResult, servicesResult, appointmentsResult, todayRevenueResult, monthRevenueResult, monthExpensesResult].find(
     (result) => result.error
   );
   if (failed?.error) {
@@ -224,7 +226,7 @@ export async function getDashboardData() {
       businessId: context.businessId,
       message: billingError instanceof Error ? billingError.message : "Unknown billing error"
     });
-    return { plan: "free" as const, status: "active" };
+    return { plan: "free" as const, status: "active", served_clients_count: 0, completed_appointments_count: 0 };
   });
   const activity: ActivityItem[] = [
     ...clients.slice(0, 2).map((client) => ({
@@ -262,8 +264,8 @@ export async function getDashboardData() {
         plan: subscription.plan,
         status: subscription.status,
         usage: {
-          clients: clientsCountResult.count ?? clients.length,
-          appointments: appointmentsCountResult.count ?? 0
+          clients: subscription.served_clients_count,
+          appointments: subscription.completed_appointments_count
         },
         limits: planDetails[subscription.plan]
       }

@@ -25,6 +25,7 @@ export type Database = {
           notes: string | null;
           telegram: string | null;
           visits_count: number;
+          served_counted_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -36,6 +37,7 @@ export type Database = {
           notes?: string | null;
           telegram?: string | null;
           visits_count?: number;
+          served_counted_at?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["clients"]["Insert"]>;
@@ -51,6 +53,7 @@ export type Database = {
           ends_at: string;
           status: AppointmentStatus;
           notes: string | null;
+          usage_counted_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -62,6 +65,7 @@ export type Database = {
           ends_at: string;
           status?: AppointmentStatus;
           notes?: string | null;
+          usage_counted_at?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["appointments"]["Insert"]>;
@@ -112,6 +116,8 @@ export type Database = {
           trial_ends_at: string | null;
           cancelled_at: string | null;
           portal_url: string | null;
+          served_clients_count: number;
+          completed_appointments_count: number;
           created_at: string;
           updated_at: string;
         };
@@ -131,6 +137,8 @@ export type Database = {
           trial_ends_at?: string | null;
           cancelled_at?: string | null;
           portal_url?: string | null;
+          served_clients_count?: number;
+          completed_appointments_count?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -148,6 +156,8 @@ export type Database = {
           trial_ends_at?: string | null;
           cancelled_at?: string | null;
           portal_url?: string | null;
+          served_clients_count?: number;
+          completed_appointments_count?: number;
           updated_at?: string;
         };
         Relationships: [];
